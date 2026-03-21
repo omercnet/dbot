@@ -1,9 +1,11 @@
 [project]
 name = "dbot"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Run 1,100+ XSOAR security integrations as MCP tools. No XSOAR required."
-requires-python = ">=3.11"
+readme = "README.md"
+requires-python = ">=3.13"
 license = "MIT"
+keywords = ["mcp", "xsoar", "security", "integrations", "demisto"]
 dependencies = [
     "fastmcp>=2.0",
     "pydantic>=2.0",
@@ -11,31 +13,116 @@ dependencies = [
     "pydantic-ai>=0.1",
 ]
 
-[project.optional-dependencies]
-dev = [
-    "pytest>=8.0",
-    "pytest-asyncio>=0.23",
-    "ruff>=0.4",
-    "mypy>=1.10",
-]
+[project.urls]
+Documentation = "https://github.com/yourorg/dbot#readme"
+Issues = "https://github.com/yourorg/dbot/issues"
+Source = "https://github.com/yourorg/dbot"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+# ── Hatch version management ──────────────────────────────────────────
+# Reads __version__ from dbot/__init__.py
+# Bump with: hatch version minor | major | patch | 0.2.0
+
+[tool.hatch.version]
+path = "dbot/__init__.py"
+
+# ── Hatch environments ────────────────────────────────────────────────
+
+# Default dev environment — testing + linting
+[tool.hatch.envs.default]
+dependencies = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "pytest-cov>=5.0",
+    "ruff>=0.4",
+    "mypy>=1.10",
+    "dateparser>=1.0",
+]
+
+[tool.hatch.envs.default.scripts]
+test = "pytest {args:tests/} -v"
+test-quick = "pytest tests/ -q --ignore=tests/integrations"
+cov = "pytest tests/ --cov=dbot --cov-report=term-missing --cov-report=html {args}"
+lint = [
+    "ruff check dbot/ tests/",
+    "ruff format --check dbot/ tests/",
+]
+fmt = [
+    "ruff check --fix dbot/ tests/",
+    "ruff format dbot/ tests/",
+]
+typecheck = "mypy dbot/"
+check = [
+    "lint",
+    "typecheck",
+    "test-quick",
+]
+
+# Test matrix — run across Python versions
+[tool.hatch.envs.test]
+dependencies = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "pytest-cov>=5.0",
+    "dateparser>=1.0",
+]
+
+[tool.hatch.envs.test.scripts]
+run = "pytest {args:tests/} -v"
+cov = "pytest tests/ --cov=dbot --cov-report=term-missing {args}"
+
+[[tool.hatch.envs.test.matrix]]
+python = ["3.13", "3.14"]
+
+# Types environment — isolated mypy
+[tool.hatch.envs.types]
+dependencies = [
+    "mypy>=1.10",
+    "pydantic>=2.0",
+    "pyyaml>=6.0",
+]
+
+[tool.hatch.envs.types.scripts]
+check = "mypy dbot/ {args}"
+
+# ── Ruff ──────────────────────────────────────────────────────────────
+
 [tool.ruff]
-target-version = "py311"
+target-version = "py313"
 line-length = 120
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "N", "W", "UP"]
+select = ["E", "F", "I", "N", "W", "UP", "B", "SIM", "RUF"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101"]
+
+# ── Pytest ────────────────────────────────────────────────────────────
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
 
+# ── Mypy ──────────────────────────────────────────────────────────────
+
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.13"
 strict = true
 warn_return_any = true
 warn_unused_configs = true
+
+# ── Coverage ──────────────────────────────────────────────────────────
+
+[tool.coverage.run]
+source = ["dbot"]
+omit = ["dbot/runtime/runner.py"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.",
+    "if TYPE_CHECKING:",
+]

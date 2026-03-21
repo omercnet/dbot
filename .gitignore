@@ -33,8 +33,18 @@ dbot-audit.log
 .DS_Store
 Thumbs.db
 
+# Hatch / pip temp dirs
+pip-*
+pytest-of-*
+
+# Ruff
+.ruff_cache/
 # uv
 uv.lock
+uv-*.lock
 
 # Sisyphus plans
 .sisyphus/
+
+# OpenCode / agent
+AGENTS.md

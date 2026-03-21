@@ -2,8 +2,6 @@
 
 # ruff: noqa: N802, N803, N816
 
-from __future__ import annotations
-
 import contextvars
 import logging
 import uuid
@@ -20,13 +18,13 @@ class DemistoMock:
     """Per-invocation XSOAR runtime mock. Thread-safe via contextvars."""
 
     __slots__ = (
-        "_command",
         "_args",
-        "_params",
-        "_results",
+        "_command",
         "_context",
         "_last_run",
         "_logs",
+        "_params",
+        "_results",
     )
 
     def __init__(self, command: str, args: dict[str, Any], params: dict[str, Any]) -> None:
