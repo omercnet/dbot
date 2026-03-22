@@ -1,4 +1,7 @@
-"""Web UI — PydanticAI built-in chat interface for dbot.
+"""Web UI — dbot React SPA + PydanticAI chat API.
+
+The React SPA (dbot/ui/) is the primary interface. PydanticAI's to_web()
+provides the /api/chat endpoint; we replace its HTML shell with our SPA.
 
 Usage:
     dbot-web                          # default: openai:gpt-4o on port 7932
@@ -17,6 +20,10 @@ from pathlib import Path
 
 from pydantic_ai import Agent
 from starlette.applications import Starlette
+from starlette.requests import Request
+from starlette.responses import FileResponse
+from starlette.routing import Mount, Route
+from starlette.staticfiles import StaticFiles
 
 from dbot.agent.chat import CHAT_SYSTEM_PROMPT
 from dbot.agent.deps import IRDeps
@@ -119,7 +126,7 @@ def create_app(
     agent: Agent[IRDeps, str] = Agent(
         "test",  # placeholder — to_web() models param provides real models
         system_prompt=CHAT_SYSTEM_PROMPT,
-        toolsets=[toolset],
+        toolsets=[toolset],  # type: ignore[list-item]
         output_type=str,
         deps_type=IRDeps,
     )
@@ -135,7 +142,7 @@ def create_app(
         },
     )
 
-    # Create the PydanticAI web app
+    # Create the PydanticAI web app (provides /api/chat + /api/configure + /api/health)
     # to_web() validates model providers — if no API keys, fall back to settings-only mode
     try:
         starlette_app = agent.to_web(
@@ -143,18 +150,11 @@ def create_app(
             models=available_models,
             instructions=CHAT_SYSTEM_PROMPT,
         )
+        # Remove PydanticAI's HTML shell routes — we serve our own SPA
+        starlette_app.routes[:] = [r for r in starlette_app.routes if getattr(r, "path", "") not in ("/", "/{id}")]
     except Exception:
         # Fallback: plain Starlette app (settings work, chat won't until keys configured)
-        from starlette.responses import HTMLResponse
-        from starlette.routing import Route
-
-        async def _no_model(request):
-            return HTMLResponse(
-                "<h2>No LLM API key configured</h2>"
-                "<p>Go to <a href='/settings'>/settings</a> to configure your LLM provider.</p>"
-            )
-
-        starlette_app = Starlette(routes=[Route("/", _no_model)])
+        starlette_app = Starlette(routes=[])
 
     # Mount settings routes — inject state BEFORE adding routes
     # Initialize API handler state (module-level, avoids Starlette request.app.state issues)
@@ -168,6 +168,22 @@ def create_app(
     for insert_pos, route in enumerate(settings_router.routes):
         starlette_app.routes.insert(insert_pos, route)
 
+    # Mount React SPA static files
+    ui_dist = Path(__file__).parent.parent / "ui" / "dist"
+    if ui_dist.is_dir():
+        # Serve built assets (JS, CSS, images) at /assets/
+        assets_dir = ui_dist / "assets"
+        if assets_dir.is_dir():
+            starlette_app.routes.append(Mount("/assets", app=StaticFiles(directory=str(assets_dir)), name="spa-assets"))
+
+        # SPA catch-all: any non-API GET request serves index.html
+        spa_index = str(ui_dist / "index.html")
+
+        async def spa_fallback(request: Request) -> FileResponse:
+            return FileResponse(spa_index)
+
+        starlette_app.routes.append(Route("/{path:path}", spa_fallback, methods=["GET"]))
+        starlette_app.routes.append(Route("/", spa_fallback, methods=["GET"]))
     return starlette_app
 
 

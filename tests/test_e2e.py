@@ -345,6 +345,6 @@ def _parse_tool_result(result: Any) -> Any:
         # Empty content list = empty result (e.g., search with no matches)
         return []
     # Fallback: might be raw data
-    if isinstance(result, (dict, list)):
+    if isinstance(result, dict | list):
         return result
     raise ValueError(f"Could not parse tool result: {result!r}")

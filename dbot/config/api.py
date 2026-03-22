@@ -331,7 +331,7 @@ async def reload_app(request: Request) -> JSONResponse:
         agent: Agent[IRDeps, str] = Agent(
             default_model,
             system_prompt=CHAT_SYSTEM_PROMPT,
-            toolsets=[toolset],
+            toolsets=[toolset],  # type: ignore[list-item]
             output_type=str,
             deps_type=IRDeps,
         )

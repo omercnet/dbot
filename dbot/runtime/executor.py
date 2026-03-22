@@ -43,8 +43,18 @@ async def execute_inprocess(
             "results": mock.get_results(),
             "logs": mock.get_logs(),
         }
+    except SystemExit:
+        # Leaked SystemExit from integration — should be caught in _run_integration
+        # but handle here as safety net to never crash the server.
+        return {
+            "success": False,
+            "error": "Integration called sys.exit()",
+            "error_type": "SystemExit",
+            "results": mock.get_results(),
+            "logs": mock.get_logs(),
+        }
     except Exception as e:
-        logger.exception("Integration execution failed: %s", e)
+        logger.debug("Integration execution failed: %s", e, exc_info=True)
         return {
             "success": False,
             "error": str(e),
@@ -86,8 +96,19 @@ def _run_integration(integration_py: Path, mock: DemistoMock) -> dict[str, Any]:
             "results": mock.get_results(),
             "logs": mock.get_logs(),
         }
+    except SystemExit:
+        # Demisto integrations call sys.exit() via return_error() / return_results().
+        # The mock already captured output before the exit; treat exit-0 as success.
+        results = mock.get_results()
+        logs = mock.get_logs()
+        has_error = any("error" in str(r).lower() for r in results) if results else False
+        return {
+            "success": not has_error,
+            "results": results,
+            "logs": logs,
+        }
     except Exception as e:
-        logger.exception("Integration runtime error: %s", e)
+        logger.debug("Integration runtime error: %s", e, exc_info=True)
         return {
             "success": False,
             "error": str(e),
@@ -154,7 +175,7 @@ async def execute_subprocess(
         }
 
     try:
-        return json.loads(stdout.decode())
+        return json.loads(stdout.decode())  # type: ignore[no-any-return]
     except json.JSONDecodeError:
         return {
             "success": False,

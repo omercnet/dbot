@@ -20,7 +20,7 @@ def make_invoke_tool(
     catalog: Catalog,
     credential_store: CredentialStore,
     executor_fn: ExecutorFn,
-):  # type: ignore[no-untyped-def]
+) -> Callable[..., Any]:
     """Create the invoke_tool MCP tool function."""
 
     async def invoke_tool(tool_name: str, args: dict[str, Any], reason: str) -> dict[str, Any]:

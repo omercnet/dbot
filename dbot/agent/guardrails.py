@@ -67,7 +67,7 @@ def build_toolset(config: GuardrailConfig) -> AbstractToolset:
     """
     toolset = FunctionToolset()
 
-    @toolset.tool
+    @toolset.tool  # type: ignore[arg-type]
     async def search_tools(ctx: RunContext[IRDeps], query: str, category: str | None = None) -> list[dict[str, Any]]:
         """Search available security tools by keyword or category.
 
@@ -83,7 +83,7 @@ def build_toolset(config: GuardrailConfig) -> AbstractToolset:
         """
         return ctx.deps.catalog.search(query, category, top_k=10)
 
-    @toolset.tool
+    @toolset.tool  # type: ignore[arg-type]
     async def get_tool_schema(ctx: RunContext[IRDeps], tool_name: str) -> dict[str, Any]:
         """Get the full argument and output schema for a specific tool.
 
@@ -95,7 +95,7 @@ def build_toolset(config: GuardrailConfig) -> AbstractToolset:
         """
         return ctx.deps.catalog.get_schema(tool_name)
 
-    @toolset.tool
+    @toolset.tool  # type: ignore[arg-type]
     async def invoke_tool(
         ctx: RunContext[IRDeps],
         tool_name: str,
@@ -228,7 +228,7 @@ def build_toolset(config: GuardrailConfig) -> AbstractToolset:
             # invoke_tool: always visible (guardrail logic is inside the function)
             return name not in blocked_lower
 
-        toolset = toolset.filtered(_filter_fn)  # type: ignore[assignment]
+        toolset = toolset.filtered(_filter_fn)  # type: ignore[assignment,arg-type]
 
     # Layer 2: Require approval for specific tools (only in responder mode)
     has_approvals = config.require_approval_tools or config.require_approval_categories

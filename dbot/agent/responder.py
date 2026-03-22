@@ -91,7 +91,7 @@ class ResponderAgent:
         self._agent: Agent[IRDeps, str | DeferredToolRequests] = Agent(
             model_name,
             system_prompt=RESPONDER_SYSTEM_PROMPT,
-            toolsets=[toolset],
+            toolsets=[toolset],  # type: ignore[list-item]
             output_type=str | DeferredToolRequests,  # type: ignore[arg-type]
             deps_type=IRDeps,
         )
@@ -146,12 +146,12 @@ class ResponderAgent:
                     result = await self._agent.run(
                         message_history=messages,
                         deps=deps,
-                        deferred_tool_results=DeferredToolResults(approvals=approvals),
+                        deferred_tool_results=DeferredToolResults(approvals=approvals),  # type: ignore[arg-type]
                     )
                     messages = result.all_messages()
                 else:
                     # No HITL handler — record as blocked
-                    for call in result.output.approvals:
+                    for call in result.output.approvals:  # type: ignore[union-attr]
                         deferred_list.append(
                             {
                                 "tool_name": call.tool_name,

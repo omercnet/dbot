@@ -1,6 +1,8 @@
 """YAML indexer — walks Packs/ and parses integration definitions."""
 
+import json
 import logging
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +17,8 @@ from dbot.registry.models import (
 )
 
 logger = logging.getLogger("dbot.indexer")
+
+_CACHE_FILENAME = ".index_cache.json"
 
 
 def _coerce_options(raw: Any) -> list[str] | None:
@@ -155,52 +159,102 @@ def parse_integration_yaml(yml_path: Path) -> IntegrationDef | None:
     )
 
 
+def _get_content_hash(content_root: Path) -> str | None:
+    """Get git commit hash of the content directory for cache invalidation."""
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=content_root,
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        pass
+    return None
+
+
+def _load_cache(cache_path: Path, content_hash: str) -> list[IntegrationDef] | None:
+    """Load cached integrations if the cache exists and matches the content hash."""
+    if not cache_path.exists():
+        return None
+    try:
+        with open(cache_path, encoding="utf-8") as f:
+            data = json.load(f)
+        if data.get("content_hash") != content_hash:
+            logger.info("Index cache stale (hash mismatch), re-indexing")
+            return None
+        integrations = [IntegrationDef.model_validate(entry) for entry in data["integrations"]]
+        logger.info("Loaded %d integrations from cache", len(integrations))
+        return integrations
+    except Exception:
+        logger.warning("Failed to load index cache, re-indexing", exc_info=True)
+        return None
+
+
+def _save_cache(cache_path: Path, content_hash: str, integrations: list[IntegrationDef]) -> None:
+    """Persist the full integration index to a JSON cache file."""
+    try:
+        data = {
+            "content_hash": content_hash,
+            "integrations": [i.model_dump() for i in integrations],
+        }
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(cache_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, separators=(",", ":"))
+        logger.info("Saved index cache (%d integrations)", len(integrations))
+    except OSError:
+        logger.warning("Failed to save index cache", exc_info=True)
+
+
+def _walk_and_parse(packs_dir: Path) -> list[IntegrationDef]:
+    """Walk Packs/ and parse all integration YAMLs (no filtering)."""
+    integrations: list[IntegrationDef] = []
+    for yml_path in sorted(packs_dir.glob("*/Integrations/*/*.yml")):
+        integration = parse_integration_yaml(yml_path)
+        if integration and integration.commands:
+            integrations.append(integration)
+            logger.debug("Indexed %s with %d commands", integration.name, len(integration.commands))
+    return integrations
+
+
 def index_content(content_root: Path, enabled_packs: list[str] | None = None) -> list[IntegrationDef]:
     """Walk content/Packs/ and parse all integration YAMLs.
 
+    Results are cached to disk (keyed by the content/ git commit hash) so
+    subsequent startups skip YAML parsing entirely.
+
     Args:
         content_root: Path to the demisto/content checkout root.
-        enabled_packs: If provided, only index these packs. Otherwise index all.
+        enabled_packs: If provided, only return these packs. Otherwise return all.
 
     Returns:
         List of parsed IntegrationDef objects (only those with commands).
     """
-    integrations: list[IntegrationDef] = []
     packs_dir = content_root / "Packs"
 
     if not packs_dir.exists():
         logger.warning("Packs directory not found at %s", packs_dir)
-        return integrations
+        return []
 
-    for yml_path in sorted(packs_dir.glob("*/Integrations/*/*.yml")):
-        # Extract pack name
-        parts = yml_path.parts
-        pack_idx = None
-        for i, part in enumerate(parts):
-            if part == "Packs":
-                pack_idx = i
-                break
+    content_hash = _get_content_hash(content_root)
+    cache_path = content_root.parent / "config" / _CACHE_FILENAME
 
-        if pack_idx is None or pack_idx + 1 >= len(parts):
-            continue
+    integrations: list[IntegrationDef] | None = None
+    if content_hash:
+        integrations = _load_cache(cache_path, content_hash)
 
-        pack_name = parts[pack_idx + 1]
+    if integrations is None:
+        integrations = _walk_and_parse(packs_dir)
+        if content_hash:
+            _save_cache(cache_path, content_hash, integrations)
 
-        if enabled_packs and pack_name not in enabled_packs:
-            continue
+    if enabled_packs:
+        enabled_set = set(enabled_packs)
+        integrations = [i for i in integrations if i.pack in enabled_set]
 
-        integration = parse_integration_yaml(yml_path)
-        if integration and integration.commands:
-            integrations.append(integration)
-            logger.debug(
-                "Indexed %s with %d commands",
-                integration.name,
-                len(integration.commands),
-            )
-
-    logger.info(
-        "Indexed %d integrations from %s",
-        len(integrations),
-        packs_dir,
-    )
+    logger.info("Indexed %d integrations from %s", len(integrations), packs_dir)
     return integrations

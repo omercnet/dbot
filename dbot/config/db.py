@@ -66,7 +66,7 @@ class ConfigDB:
             row = self._conn.execute("SELECT data FROM config_sections WHERE section = ?", (section,)).fetchone()
 
         if row:
-            return json.loads(row["data"])
+            return json.loads(row["data"])  # type: ignore[no-any-return]
 
         if section in SECTION_DEFAULTS:
             return SECTION_DEFAULTS[section].model_dump()

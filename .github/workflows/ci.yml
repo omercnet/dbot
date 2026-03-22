@@ -1,0 +1,132 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint & Format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: true
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: dbot/ui/package-lock.json
+
+      - name: Install Python deps
+        run: pip install hatch
+
+      - name: Install Node deps
+        run: npm ci
+        working-directory: dbot/ui
+
+      - name: Ruff check
+        run: hatch run ruff check dbot/ tests/
+
+      - name: Ruff format
+        run: hatch run ruff format --check dbot/ tests/
+
+      - name: Biome check
+        run: npm run lint
+        working-directory: dbot/ui
+
+      - name: TypeScript check
+        run: npx tsc -b --noEmit
+        working-directory: dbot/ui
+
+  typecheck:
+    name: Mypy (non-blocking)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: true
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Install deps
+        run: pip install hatch
+
+      - name: Mypy
+        run: hatch run typecheck
+
+  test:
+    name: Test (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.13", "3.14"]
+      fail-fast: false
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: true
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          allow-prereleases: true
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: dbot/ui/package-lock.json
+
+      - name: Install Python deps
+        run: pip install hatch
+
+      - name: Install Node deps
+        run: npm ci
+        working-directory: dbot/ui
+
+      - name: Build UI
+        run: npm run build
+        working-directory: dbot/ui
+
+      - name: Run tests
+        run: hatch run pytest tests/ -v --ignore=tests/integrations
+
+  build:
+    name: Build UI
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: dbot/ui/package-lock.json
+
+      - name: Install
+        run: npm ci
+        working-directory: dbot/ui
+
+      - name: Build
+        run: npm run build
+        working-directory: dbot/ui
+
+      - name: Verify dist
+        run: |
+          test -f dbot/ui/dist/index.html
+          ls -la dbot/ui/dist/assets/

@@ -37,7 +37,7 @@ class AlertWatcher:
         self._loop = loop
         self._done_dir = watch_dir / "done"
         self._failed_dir = watch_dir / "failed"
-        self._observer: Observer | None = None
+        self._observer: Observer | None = None  # type: ignore[valid-type]
 
     def start(self) -> None:
         """Start watching the directory."""
@@ -59,8 +59,8 @@ class AlertWatcher:
     def stop(self) -> None:
         """Stop watching."""
         if self._observer:
-            self._observer.stop()
-            self._observer.join(timeout=5)
+            self._observer.stop()  # type: ignore[attr-defined]
+            self._observer.join(timeout=5)  # type: ignore[attr-defined]
             self._observer = None
             logger.info("Watcher stopped")
 
@@ -83,7 +83,7 @@ class _AlertFileHandler(FileSystemEventHandler):
     def on_created(self, event: FileCreatedEvent) -> None:  # type: ignore[override]
         if not isinstance(event, FileCreatedEvent):
             return
-        path = Path(event.src_path)
+        path = Path(str(event.src_path))
         if path.suffix.lower() != ".json":
             return
         logger.info("New alert file detected: %s", path.name)
