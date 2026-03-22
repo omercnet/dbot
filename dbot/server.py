@@ -57,7 +57,7 @@ def create_server() -> FastMCP:
             py, cmd, args, params, content_root=CONTENT_ROOT
         )
     else:
-        executor_fn = execute_inprocess  # type: ignore[assignment]
+        executor_fn = execute_inprocess
 
     # 6. Create MCP server
     mcp = FastMCP("dbot")

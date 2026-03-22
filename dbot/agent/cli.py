@@ -145,10 +145,10 @@ def respond(
     async def _on_deferred(deferred: object) -> dict[str, bool]:
         """CLI HITL handler — prompt user for each deferred tool."""
         if no_hitl:
-            return {call.tool_call_id: False for call in deferred.approvals}  # type: ignore[union-attr]
+            return {call.tool_call_id: False for call in deferred.approvals}  # type: ignore[attr-defined]
 
         approvals: dict[str, bool] = {}
-        for call in deferred.approvals:  # type: ignore[union-attr]
+        for call in deferred.approvals:  # type: ignore[attr-defined]
             console.print(f"\n[bold yellow]Approval required:[/bold yellow] {call.tool_name}")
             console.print(f"  Args: {call.args}")
             answer = console.input("  Approve? [y/N] ").strip().lower()
@@ -273,6 +273,7 @@ def web(
     console.print(f"Model: {model_name}\n")
 
     with Status("[bold blue]Starting...", console=console) as status:
+
         def _on_progress(msg: str) -> None:
             status.update(f"[bold blue]{msg}")
             console.log(f"  {msg}")

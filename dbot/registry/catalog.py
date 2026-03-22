@@ -40,8 +40,12 @@ class Catalog:
         for key, (integration, cmd) in self._commands.items():
             if cmd.deprecated:
                 continue
-            if category and category.lower() not in integration.category.lower():
-                continue
+            if category:
+                cat_lower = category.lower()
+                # YAML categories are often inaccurate — also match against description
+                cat_searchable = f"{integration.category} {integration.description}".lower()
+                if cat_lower not in cat_searchable:
+                    continue
 
             text = (
                 f"{cmd.name} {cmd.description} {integration.pack} {integration.description} {integration.category}"
@@ -110,5 +114,5 @@ class Catalog:
         return {
             "total_integrations": len(self._integrations),
             "total_commands": len(self._commands),
-            "categories": sorted(set(i.category for i in self._integrations.values() if i.category)),
+            "categories": sorted({i.category for i in self._integrations.values() if i.category}),
         }

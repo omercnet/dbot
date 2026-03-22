@@ -3,7 +3,7 @@ __pycache__/
 *.py[cod]
 *$py.class
 *.egg-info/
-dist/
+/dist/
 build/
 .eggs/
 
@@ -11,6 +11,8 @@ build/
 .venv/
 venv/
 env/
+.env
+.env.*
 
 # IDE
 .idea/
@@ -23,32 +25,36 @@ env/
 .coverage
 htmlcov/
 .mypy_cache/
+pytest-of-*/
+
+# Linting / formatting
+.ruff_cache/
 
 # dbot specific — NEVER commit these (contain secrets)
 config/credentials.yaml
 config/llm.yaml
 config/.dbot-key
 config/dbot.db
-dbot-audit.log
-dbot-agent-audit.log
+config/.index_cache.json
 *.log
 
 # OS
 .DS_Store
 Thumbs.db
 
-# Hatch / pip temp dirs
+# Build artifacts
 pip-*
-pytest-of-*
-
-# Ruff
-.ruff_cache/
-# uv
 uv.lock
 uv-*.lock
+node-compile-cache/
 
-# Sisyphus plans
+# UI (React/Vite)
+dbot/ui/node_modules/
+dbot/ui/.vite/
+*.tsbuildinfo
+dbot/ui/dist/
+
+# Agent / workspace
 .sisyphus/
-
-# OpenCode / agent
 AGENTS.md
+tmp/

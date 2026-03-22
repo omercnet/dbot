@@ -10,13 +10,16 @@ def _make_integration(
     pack: str = "TestPack",
     name: str = "TestIntegration",
     category: str = "Data Enrichment & Threat Intelligence",
+    description: str = "",
     commands: list[CommandDef] | None = None,
 ) -> IntegrationDef:
     if commands is None:
         commands = [
             CommandDef(name="test-cmd", description="A test command"),
         ]
-    return IntegrationDef(pack=pack, name=name, category=category, py_path="/fake.py", commands=commands)
+    return IntegrationDef(
+        pack=pack, name=name, category=category, description=description, py_path="/fake.py", commands=commands
+    )
 
 
 def _vt_integration() -> IntegrationDef:
@@ -97,6 +100,40 @@ class TestCatalogSearch:
         # VirusTotal is "Data Enrichment", should be excluded
         vt_results = [r for r in results if r["pack"] == "VirusTotal"]
         assert len(vt_results) == 0
+
+    def test_search_category_matches_description(self) -> None:
+        """Category filter should match against integration.description too."""
+        integration = _make_integration(
+            pack="MislabeledPack",
+            name="MislabeledInt",
+            category="Utilities",  # wrong category in YAML
+            description="Network security endpoint detection tool",
+            commands=[CommandDef(name="ml-detect", description="Detect threats")],
+        )
+        catalog = Catalog([integration])
+        # Searching with category="endpoint" should match the description
+        results = catalog.search("detect", category="endpoint")
+        assert len(results) == 1
+        assert results[0]["tool_name"] == "MislabeledPack.ml-detect"
+
+    def test_search_category_still_matches_category_field(self, catalog: Catalog) -> None:
+        """Category filter should still match the actual category field."""
+        results = catalog.search("detections", category="Endpoint")
+        assert len(results) > 0
+        assert results[0]["pack"] == "CrowdStrikeFalcon"
+
+    def test_search_category_no_match_in_either(self) -> None:
+        """Category filter returns nothing when neither category nor description match."""
+        integration = _make_integration(
+            pack="Unrelated",
+            name="UnrelatedInt",
+            category="Utilities",
+            description="A file management tool",
+            commands=[CommandDef(name="u-cmd", description="manage files")],
+        )
+        catalog = Catalog([integration])
+        results = catalog.search("manage", category="Endpoint")
+        assert results == []
 
     def test_search_respects_top_k(self, catalog: Catalog) -> None:
         results = catalog.search("reputation", top_k=2)

@@ -72,7 +72,7 @@ def bootstrap_common_modules(content_root: Path) -> None:
 def _shim_distutils() -> None:
     """Create a minimal distutils.version shim for Python 3.12+."""
     try:
-        from distutils.version import LooseVersion as _LV  # noqa: F401, N814
+        from distutils.version import LooseVersion as _LV  # type: ignore[import-not-found]  # noqa: F401, N814
 
         return  # distutils exists, no shim needed
     except ImportError:
@@ -80,7 +80,7 @@ def _shim_distutils() -> None:
 
     # Create distutils and distutils.version as fake modules
     distutils_mod = types.ModuleType("distutils")
-    distutils_mod.__path__ = []  # type: ignore[attr-defined]
+    distutils_mod.__path__ = []
     sys.modules["distutils"] = distutils_mod
 
     version_mod = types.ModuleType("distutils.version")

@@ -7,6 +7,7 @@ Get dbot running in under 5 minutes.
 ## Prerequisites
 
 - Python 3.13+
+- Node.js 22+
 - [hatch](https://hatch.pypa.io/) (`pip install hatch`)
 - git
 
@@ -45,6 +46,11 @@ cd ..
 ```bash
 hatch env create
 ```
+
+Then install the React SPA dependencies:
+
+```bash
+cd dbot/ui && npm install && cd ../..
 
 This creates an isolated virtualenv with all runtime and dev dependencies
 (PydanticAI, FastMCP, cryptography, ruff, pytest, etc).
@@ -157,13 +163,32 @@ async with agent.run("Check if 8.8.8.8 is malicious") as result:
 ## 9. Run Tests
 
 ```bash
-hatch run test           # full suite (226 tests)
+hatch run test           # full suite (307 tests)
 hatch run test-quick     # skip integration tests (faster)
 hatch run lint           # ruff check + format check
 hatch run fmt            # autofix + format
 hatch run typecheck      # mypy strict
-hatch run check          # lint + typecheck + test (CI gate)
+hatch run check          # ruff + biome + tsc + tests (dev gate)
+hatch run check-strict   # adds mypy
+hatch run ci             # full pipeline: lint + mypy + build-ui + all tests
+hatch run hooks          # install pre-commit hooks
 ```
+
+### Frontend hot reload
+
+To run the React dev server with HMR (proxies API calls to the backend at :7932):
+
+```bash
+# Terminal 1 -- start the backend
+hatch run dbot-web
+
+# Terminal 2 -- start the frontend dev server
+cd dbot/ui && npm run dev
+# -> http://localhost:5173  (hot reload)
+```
+
+For production, `hatch run build-ui` compiles the SPA into `dbot/ui/dist/`,
+which the Starlette server then serves as static files.
 
 ---
 

@@ -1,0 +1,35 @@
+default_install_hook_types: [pre-commit, commit-msg]
+
+repos:
+  # ── Housekeeping ────────────────────────────────────────────────────
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: \.md$
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: [--maxkb=500]
+      - id: debug-statements
+      - id: detect-private-key
+
+  # ── Python: ruff ────────────────────────────────────────────────────
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.7
+    hooks:
+      - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+      - id: ruff-format
+
+  # ── JS/TS: biome (local — uses project's pinned version) ───────────
+  - repo: local
+    hooks:
+      - id: biome-check
+        name: biome check
+        entry: npx --prefix dbot/ui biome check --write --no-errors-on-unmatched --config-path biome.json
+        language: system
+        files: ^dbot/ui/(src/.*\.(ts|tsx|js|jsx)|vite\.config\.ts)$
+        pass_filenames: true
