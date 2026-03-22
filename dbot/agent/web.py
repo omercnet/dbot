@@ -21,7 +21,6 @@ from dbot.agent.chat import CHAT_SYSTEM_PROMPT
 from dbot.agent.deps import IRDeps
 from dbot.agent.guardrails import GuardrailConfig, build_toolset
 from dbot.audit import AuditLogger
-from dbot.config.api import make_settings_router
 from dbot.config.db import ConfigDB
 from dbot.registry.catalog import Catalog
 from dbot.registry.indexer import index_content
@@ -47,13 +46,34 @@ def _bootstrap_deps(
     key_path = config_dir / ".dbot-key"
     config_db = ConfigDB(db_path, key_path)
 
+    # Inject LLM provider API keys from DB into environment
+    from dbot.config.models import KNOWN_PROVIDERS
+
+    llm_config = config_db.get_section("llm")
+    providers_config = llm_config.get("providers", {})
+    provider_keys = config_db.get_all_provider_keys()
+    for provider, api_key in provider_keys.items():
+        # Determine env var name: custom > known default
+        prov_cfg = providers_config.get(provider, {})
+        env_var = prov_cfg.get("env_var") or KNOWN_PROVIDERS.get(provider, "")
+        if env_var and env_var not in os.environ:
+            os.environ[env_var] = api_key
+
+        # Set base URL if configured
+        base_url = prov_cfg.get("base_url", "")
+        if base_url:
+            # PydanticAI uses provider-specific env vars for base URLs
+            base_env = f"{provider.upper()}_BASE_URL"
+            if base_env not in os.environ:
+                os.environ[base_env] = base_url
+
     # Use DB-backed credential store
     from dbot.credentials.store import CredentialStore
 
     # Build a CredentialStore that reads from the DB
     cred_store = CredentialStore()  # empty base
     # Populate from DB
-    for pack in config_db.get_all_credential_packs():
+    for pack in config_db.get_all_credential_packs_filtered():
         cred_store._credentials[pack] = config_db.get_decrypted_pack(pack)
 
     model_name = model or os.environ.get("DBOT_LLM_MODEL", "openai:gpt-4o")
@@ -120,13 +140,17 @@ def create_app(
 
         starlette_app = Starlette(routes=[Route("/", _no_model)])
 
-    # Mount settings routes onto the app
+    # Mount settings routes — inject state BEFORE adding routes
+    # Initialize API handler state (module-level, avoids Starlette request.app.state issues)
+    from dbot.config.api import init_api_state, make_settings_router
+
+    init_api_state(config_db=config_db, catalog=catalog, executor=execute_inprocess)
+
+    # Add settings routes — insert all at once to preserve correct order
+    # (literal paths like /providers before parameterized /{section})
     settings_router = make_settings_router()
-    starlette_app.state.config_db = config_db
-    starlette_app.state.catalog = catalog
-    starlette_app.state.executor = execute_inprocess
-    for route in settings_router.routes:
-        starlette_app.routes.insert(0, route)  # insert before catch-all
+    for insert_pos, route in enumerate(settings_router.routes):
+        starlette_app.routes.insert(insert_pos, route)
 
     return starlette_app
 

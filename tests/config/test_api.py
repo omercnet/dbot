@@ -14,10 +14,8 @@ def _make_test_app(config_db: ConfigDB) -> TestClient:
     """Create a test client with settings routes."""
     from starlette.applications import Starlette
 
-    router = make_settings_router()
-    app = Starlette(routes=router.routes)
+    from dbot.config.api import init_api_state
 
-    # Attach state
     catalog = Catalog(
         [
             IntegrationDef(
@@ -29,10 +27,13 @@ def _make_test_app(config_db: ConfigDB) -> TestClient:
             ),
         ]
     )
-    app.state.config_db = config_db
-    app.state.catalog = catalog
-    app.state.executor = AsyncMock(return_value={"success": True, "results": [], "logs": []})
+    executor = AsyncMock(return_value={"success": True, "results": [], "logs": []})
 
+    # Set module-level state for API handlers
+    init_api_state(config_db=config_db, catalog=catalog, executor=executor)
+
+    router = make_settings_router()
+    app = Starlette(routes=router.routes)
     return TestClient(app)
 
 

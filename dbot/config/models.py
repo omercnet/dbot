@@ -13,6 +13,24 @@ class GeneralConfig(BaseModel):
     content_root: str = ""  # empty = auto-detect from package root
 
 
+class ProviderConfig(BaseModel):
+    """LLM provider configuration (non-secret fields only)."""
+
+    base_url: str = ""  # empty = use provider default
+    env_var: str = ""  # env var name for the API key (e.g., OPENAI_API_KEY)
+
+
+# Well-known providers with their default env var names
+KNOWN_PROVIDERS: dict[str, str] = {
+    "openai": "OPENAI_API_KEY",
+    "anthropic": "ANTHROPIC_API_KEY",
+    "google": "GOOGLE_API_KEY",
+    "groq": "GROQ_API_KEY",
+    "mistral": "MISTRAL_API_KEY",
+    "ollama": "",  # no key needed
+}
+
+
 class LLMConfig(BaseModel):
     """LLM model configuration."""
 
@@ -20,6 +38,7 @@ class LLMConfig(BaseModel):
     available_models: dict[str, str] = Field(default_factory=dict)
     temperature: float = 0.0
     max_tokens: int = 4096
+    providers: dict[str, ProviderConfig] = Field(default_factory=dict)
 
 
 class GuardrailsConfig(BaseModel):

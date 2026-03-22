@@ -140,6 +140,38 @@ class ConfigDB:
             self._conn.execute("DELETE FROM credentials WHERE pack = ?", (pack,))
             self._conn.commit()
 
+    # ── LLM Provider Keys ────────────────────────────────────────────
+
+    PROVIDER_PREFIX = "__provider__"
+
+    def set_provider_key(self, provider: str, api_key: str) -> None:
+        """Store an encrypted LLM provider API key."""
+        self.set_credential(f"{self.PROVIDER_PREFIX}{provider}", "api_key", api_key)
+
+    def get_provider_key(self, provider: str) -> str | None:
+        """Get decrypted API key for a provider. Returns None if not set."""
+        creds = self.get_decrypted_pack(f"{self.PROVIDER_PREFIX}{provider}")
+        return creds.get("api_key")
+
+    def get_all_provider_keys(self) -> dict[str, str]:
+        """Get all provider keys (decrypted). Used at startup to inject into env."""
+        result: dict[str, str] = {}
+        for pack in self.get_all_credential_packs():
+            if pack.startswith(self.PROVIDER_PREFIX):
+                provider = pack[len(self.PROVIDER_PREFIX) :]
+                key = self.get_provider_key(provider)
+                if key:
+                    result[provider] = key
+        return result
+
+    def delete_provider_key(self, provider: str) -> None:
+        """Remove a provider's API key."""
+        self.delete_pack_credentials(f"{self.PROVIDER_PREFIX}{provider}")
+
+    def get_all_credential_packs_filtered(self) -> list[str]:
+        """List credential packs excluding internal provider keys."""
+        return [p for p in self.get_all_credential_packs() if not p.startswith(self.PROVIDER_PREFIX)]
+
     def _migrate_credentials_yaml(self, config_dir: Path) -> None:
         """Auto-migrate credentials from credentials.yaml on first run."""
         migration_name = "credentials_yaml_import"
