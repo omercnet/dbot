@@ -6,38 +6,3 @@ github-cli = "latest"
 
 [env]
 MISE_DISABLE_TOOLS = "python"  # use system python
-
-[tasks.setup]
-description = "Initialize project (submodule + deps)"
-run = """
-git submodule update --init
-hatch env create
-"""
-
-[tasks.dev]
-description = "Launch web UI"
-run = "hatch run dbot-web"
-
-[tasks.chat]
-description = "Launch terminal chat"
-run = "hatch run dbot-chat"
-
-[tasks.test]
-description = "Run full test suite"
-run = "hatch run test"
-
-[tasks.test-quick]
-description = "Run tests (skip integration)"
-run = "hatch run test-quick"
-
-[tasks.lint]
-description = "Lint check"
-run = "hatch run lint"
-
-[tasks.fmt]
-description = "Autofix + format"
-run = "hatch run fmt"
-
-[tasks.check]
-description = "Full CI gate (lint + typecheck + test)"
-run = "hatch run check"
