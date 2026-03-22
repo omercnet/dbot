@@ -12,6 +12,7 @@ Or programmatically:
 """
 
 import os
+from collections.abc import Callable
 from pathlib import Path
 
 from pydantic_ai import Agent
@@ -31,17 +32,27 @@ from dbot.runtime.executor import execute_inprocess
 def _bootstrap_deps(
     model: str | None = None,
     audit_log: Path | None = None,
+    on_progress: Callable[[str], None] | None = None,
 ) -> tuple[IRDeps, str, Catalog, ConfigDB]:
     """Bootstrap the full dbot stack and return deps + model name."""
+    def _status(msg: str) -> None:
+        if on_progress:
+            on_progress(msg)
+
     project_root = Path(__file__).parent.parent.parent
     content_root = project_root / "content"
     config_dir = project_root / "config"
+
+    _status("Loading CommonServerPython...")
     bootstrap_common_modules(content_root)
 
+    _status("Indexing integration packs...")
     integrations = index_content(content_root)
     catalog = Catalog(integrations)
+    stats = catalog.stats
+    _status(f"Indexed {stats['total_commands']} commands from {stats['total_integrations']} integrations")
 
-    # Initialize config DB (creates SQLite + encryption key on first run)
+    _status("Initializing config database...")
     db_path = config_dir / "dbot.db"
     key_path = config_dir / ".dbot-key"
     config_db = ConfigDB(db_path, key_path)
@@ -94,9 +105,12 @@ def create_app(
     model: str | None = None,
     models: dict[str, str] | None = None,
     audit_log: Path | None = None,
+    on_progress: Callable[[str], None] | None = None,
 ) -> Starlette:
     """Create the dbot web UI application with settings."""
-    deps, _model_name, catalog, config_db = _bootstrap_deps(model, audit_log)
+    deps, _model_name, catalog, config_db = _bootstrap_deps(model, audit_log, on_progress)
+    if on_progress:
+        on_progress("Starting web server...")
     config = deps.guardrails
     toolset = build_toolset(config)
 

@@ -264,13 +264,20 @@ def web(
 ) -> None:
     """Launch the dbot web UI in the browser."""
     import uvicorn
+    from rich.status import Status
 
     from dbot.agent.web import create_app
 
     model_name = model or os.environ.get("DBOT_LLM_MODEL", "openai:gpt-4o")
     console.print(f"[bold]dbot web UI[/bold] → http://{host}:{port}")
-    console.print(f"Model: {model_name}")
-    console.print("Press Ctrl+C to stop.\n")
+    console.print(f"Model: {model_name}\n")
 
-    app = create_app(model=model_name, audit_log=audit_log)
+    with Status("[bold blue]Starting...", console=console) as status:
+        def _on_progress(msg: str) -> None:
+            status.update(f"[bold blue]{msg}")
+            console.log(f"  {msg}")
+
+        app = create_app(model=model_name, audit_log=audit_log, on_progress=_on_progress)
+
+    console.print("[bold green]Ready![/bold green] Press Ctrl+C to stop.\n")
     uvicorn.run(app, host=host, port=port, log_level="warning")
