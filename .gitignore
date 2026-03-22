@@ -26,7 +26,10 @@ htmlcov/
 
 # dbot specific
 config/credentials.yaml
+config/.dbot-key
+config/dbot.db
 dbot-audit.log
+dbot-agent-audit.log
 *.log
 
 # OS

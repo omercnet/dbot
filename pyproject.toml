@@ -7,11 +7,22 @@ requires-python = ">=3.13"
 license = "MIT"
 keywords = ["mcp", "xsoar", "security", "integrations", "demisto"]
 dependencies = [
+    "cryptography>=42.0",
     "fastmcp>=2.0",
     "pydantic>=2.0",
-    "pyyaml>=6.0",
     "pydantic-ai>=0.1",
+    "pyyaml>=6.0",
+    "typer>=0.12",
+    "rich>=13.0",
+    "watchdog>=4.0",
+    "uvicorn>=0.30",
 ]
+
+[project.scripts]
+dbot-chat = "dbot.agent.cli:chat_app"
+dbot-respond = "dbot.agent.cli:respond_app"
+dbot-watch = "dbot.agent.cli:watch_app"
+dbot-web = "dbot.agent.cli:web_app_typer"
 
 [project.urls]
 Documentation = "https://github.com/yourorg/dbot#readme"
@@ -99,6 +110,7 @@ select = ["E", "F", "I", "N", "W", "UP", "B", "SIM", "RUF"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["S101"]
+"dbot/agent/cli.py" = ["B008"]  # typer.Option() in defaults is canonical
 
 # ── Pytest ────────────────────────────────────────────────────────────
 
