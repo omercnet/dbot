@@ -10,19 +10,28 @@
     "lint": "biome check --config-path ../../biome.json src/",
     "lint:fix": "biome check --write --config-path ../../biome.json src/",
     "format": "biome format --write --config-path ../../biome.json src/",
-    "check": "biome ci --config-path ../../biome.json src/ && tsc -b --noEmit"
+    "check": "biome ci --config-path ../../biome.json src/ && tsc -b --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
-    "@ai-sdk/react": "^1.2.0",
+    "@ai-sdk/react": "^3.0.136",
+    "ai": "^6.0.134",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.8",
-    "@types/react": "^19.1.0",
-    "@types/react-dom": "^19.1.0",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^4.4.0",
+    "jsdom": "^29.0.1",
+    "msw": "^2.12.14",
     "typescript": "^5.8.0",
-    "vite": "^6.3.0"
+    "vite": "^6.3.0",
+    "vitest": "^4.1.0"
   }
 }
