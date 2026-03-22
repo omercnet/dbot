@@ -670,13 +670,27 @@
       const payload = { base_url: url, env_var: env };
       if (key) payload.api_key = key;
       try {
-        await api(`/api/settings/providers/${name}`, { method: 'PUT', body: JSON.stringify(payload) });
+        const resp = await api(`/api/settings/providers/${name}`, { method: 'PUT', body: JSON.stringify(payload) });
         toast(`${name} provider saved`);
         state.loadedProviders = false;
         await loadProviders();
+
+        // Auto-reload chat app if provider key was set
+        if (key && resp.needs_reload) {
+          toast('Reloading chat engine...', true);
+          try {
+            const reload = await api('/api/reload', { method: 'POST' });
+            if (reload.reloaded) {
+              toast('Chat engine reloaded! Go to / to start chatting.', true);
+            } else {
+              toast(`Reload failed: ${reload.detail || 'unknown error'}`, false);
+            }
+          } catch (re) {
+            toast(`Reload failed: ${re.message}`, false);
+          }
+        }
       } catch (err) {
         toast(`Failed to save ${name}: ${err.message}`, false);
-      }
     }
 
     async function deleteProvider(name) {

@@ -35,6 +35,7 @@ def _bootstrap_deps(
     on_progress: Callable[[str], None] | None = None,
 ) -> tuple[IRDeps, str, Catalog, ConfigDB]:
     """Bootstrap the full dbot stack and return deps + model name."""
+
     def _status(msg: str) -> None:
         if on_progress:
             on_progress(msg)
@@ -158,7 +159,7 @@ def create_app(
     # Initialize API handler state (module-level, avoids Starlette request.app.state issues)
     from dbot.config.api import init_api_state, make_settings_router
 
-    init_api_state(config_db=config_db, catalog=catalog, executor=execute_inprocess)
+    init_api_state(config_db=config_db, catalog=catalog, executor=execute_inprocess, app=starlette_app)
 
     # Add settings routes — insert all at once to preserve correct order
     # (literal paths like /providers before parameterized /{section})

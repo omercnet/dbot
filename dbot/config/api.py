@@ -14,14 +14,16 @@ logger = logging.getLogger("dbot.config.api")
 _config_db: Any = None
 _catalog: Any = None
 _executor: Any = None
+_starlette_app: Any = None  # reference to the main app for hot-reload
 
 
-def init_api_state(config_db: Any, catalog: Any, executor: Any) -> None:
+def init_api_state(config_db: Any, catalog: Any, executor: Any, app: Any = None) -> None:
     """Set module-level state for API handlers. Called once at startup."""
-    global _config_db, _catalog, _executor
+    global _config_db, _catalog, _executor, _starlette_app
     _config_db = config_db
     _catalog = catalog
     _executor = executor
+    _starlette_app = app
 
 
 async def get_all_settings(request: Request) -> JSONResponse:
@@ -213,6 +215,17 @@ async def put_provider(request: Request) -> JSONResponse:
         if api_key:
             db.set_provider_key(provider, api_key)
 
+            # Inject into os.environ immediately so the running process picks it up
+            import os
+
+            from dbot.config.models import KNOWN_PROVIDERS
+
+            resolved_env = env_var or KNOWN_PROVIDERS.get(provider, "")
+            if resolved_env:
+                os.environ[resolved_env] = api_key
+            if base_url:
+                os.environ[f"{provider.upper()}_BASE_URL"] = base_url
+
         # Store base_url + env_var in LLM config providers section
         from dbot.config.models import ProviderConfig
 
@@ -222,7 +235,7 @@ async def put_provider(request: Request) -> JSONResponse:
         llm_config["providers"] = providers
         db.set_section("llm", llm_config)
 
-        return JSONResponse({"status": "ok", "provider": provider})
+        return JSONResponse({"status": "ok", "provider": provider, "needs_reload": True})
     except Exception as e:
         return JSONResponse({"status": "error", "detail": str(e)}, status_code=400)
 
@@ -251,6 +264,73 @@ async def settings_page(request: Request) -> HTMLResponse:
     return HTMLResponse("<h1>Settings page not found</h1>", status_code=404)
 
 
+async def reload_app(request: Request) -> JSONResponse:
+    """POST /api/reload — rebuild the chat UI with current config."""
+    if _starlette_app is None:
+        return JSONResponse({"status": "error", "detail": "No app reference"}, status_code=500)
+
+    try:
+        from pydantic_ai import Agent
+
+        from dbot.agent.chat import CHAT_SYSTEM_PROMPT
+        from dbot.agent.deps import IRDeps
+        from dbot.agent.guardrails import GuardrailConfig, build_toolset
+        from dbot.audit import AuditLogger
+        from dbot.credentials.store import CredentialStore
+        from dbot.runtime.executor import execute_inprocess
+
+        config = GuardrailConfig.chat_default()
+        toolset = build_toolset(config)
+
+        llm_config = _config_db.get_section("llm")
+        available_models = llm_config.get("available_models", {})
+        default_model = llm_config.get("default_model", "openai:gpt-4o")
+
+        agent: Agent[IRDeps, str] = Agent(
+            default_model,
+            system_prompt=CHAT_SYSTEM_PROMPT,
+            toolsets=[toolset],
+            output_type=str,
+            deps_type=IRDeps,
+        )
+
+        cred_store = CredentialStore()
+        for pack in _config_db.get_all_credential_packs_filtered():
+            cred_store._credentials[pack] = _config_db.get_decrypted_pack(pack)
+
+        deps = IRDeps(
+            catalog=_catalog,
+            credential_store=cred_store,
+            executor=execute_inprocess,
+            audit=AuditLogger(),
+            guardrails=config,
+        )
+
+        chat_app = agent.to_web(
+            deps=deps,
+            models=available_models,
+            instructions=CHAT_SYSTEM_PROMPT,
+        )
+
+        # Hot-swap: remove old / and chat routes, add new ones
+        _starlette_app.routes[:] = [
+            r
+            for r in _starlette_app.routes
+            if getattr(r, "path", "") not in ("/", "/{id}", "/api/chat", "/api/configure", "/api/health")
+        ]
+        for route in chat_app.routes:
+            _starlette_app.routes.append(route)
+
+        return JSONResponse({"status": "ok", "reloaded": True})
+    except Exception as e:
+        import traceback
+
+        return JSONResponse(
+            {"status": "error", "detail": str(e), "traceback": traceback.format_exc()},
+            status_code=500,
+        )
+
+
 def make_settings_router() -> Router:
     """Create the settings API router.
 
@@ -259,6 +339,7 @@ def make_settings_router() -> Router:
     """
     return Router(
         routes=[
+            Route("/api/reload", reload_app, methods=["POST"]),
             Route("/api/settings/providers/{provider}", put_provider, methods=["PUT"]),
             Route("/api/settings/providers/{provider}", delete_provider, methods=["DELETE"]),
             Route("/api/settings/providers", list_providers, methods=["GET"]),
