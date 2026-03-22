@@ -1,0 +1,32 @@
+# dbot LLM configuration
+# Copy to llm.yaml and fill in values.
+# Use ${ENV_VAR} syntax to reference environment variables for API keys.
+# On first startup, dbot auto-migrates this into the SQLite config database.
+# After migration, manage via the web UI at /settings.
+
+default_model: openai:gpt-4o
+temperature: 0.0
+max_tokens: 4096
+
+# LLM provider credentials
+# API keys are encrypted at rest in the config database.
+providers:
+  openai:
+    api_key: ${OPENAI_API_KEY}
+    base_url: ""                  # leave empty for default, or set a proxy URL
+  anthropic:
+    api_key: ${ANTHROPIC_API_KEY}
+    base_url: ""
+  # google:
+  #   api_key: ${GOOGLE_API_KEY}
+  # groq:
+  #   api_key: ${GROQ_API_KEY}
+  # ollama:
+  #   base_url: http://localhost:11434
+
+# Models available in the web UI model selector
+available_models:
+  GPT-4o: openai:gpt-4o
+  GPT-4o mini: openai:gpt-4o-mini
+  Claude Sonnet: anthropic:claude-sonnet-4-5
+  Claude Haiku: anthropic:claude-haiku-3-5

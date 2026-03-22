@@ -54,6 +54,7 @@ class ConfigDB:
         self._conn.row_factory = sqlite3.Row
         self._init_schema()
         self._migrate_credentials_yaml(db_path.parent)
+        self._migrate_llm_yaml(db_path.parent)
 
     def _init_schema(self) -> None:
         with self._lock:
@@ -206,6 +207,80 @@ class ConfigDB:
             logger.info("Migrated %d credentials from credentials.yaml", migrated)
         except Exception:
             logger.exception("Failed to migrate credentials.yaml")
+
+        self._mark_migration(migration_name)
+
+    def _migrate_llm_yaml(self, config_dir: Path) -> None:
+        """Auto-migrate LLM config from llm.yaml on first run.
+
+        Reads default_model, temperature, max_tokens, available_models into
+        the 'llm' config section. Provider API keys are encrypted and stored
+        as provider credentials. Only runs once."""
+        migration_name = "llm_yaml_import"
+
+        with self._lock:
+            done = self._conn.execute("SELECT 1 FROM migrations WHERE name = ?", (migration_name,)).fetchone()
+
+        if done:
+            return
+
+        yaml_path = config_dir / "llm.yaml"
+        if not yaml_path.exists():
+            self._mark_migration(migration_name)
+            return
+
+        try:
+            with open(yaml_path, encoding="utf-8") as f:
+                raw = yaml.safe_load(f) or {}
+
+            # Build LLM config section (non-secret fields)
+            llm_data: dict[str, Any] = {}
+            for key in ("default_model", "temperature", "max_tokens", "available_models"):
+                if key in raw:
+                    llm_data[key] = raw[key]
+
+            # Process providers
+            providers_config: dict[str, dict[str, str]] = {}
+            migrated_keys = 0
+            for provider_name, prov_data in (raw.get("providers") or {}).items():
+                if not isinstance(prov_data, dict):
+                    continue
+
+                # Extract and encrypt API key
+                raw_key = prov_data.get("api_key", "")
+                if raw_key:
+                    resolved_key = self._resolve_env(str(raw_key))
+                    if resolved_key:
+                        self.set_provider_key(provider_name, resolved_key)
+                        migrated_keys += 1
+                    else:
+                        logger.warning("Skipping %s API key — env var not set", provider_name)
+
+                # Store non-secret provider config
+                providers_config[provider_name] = {
+                    "base_url": str(prov_data.get("base_url", "")),
+                    "env_var": str(prov_data.get("env_var", "")),
+                }
+
+            if providers_config:
+                llm_data["providers"] = providers_config
+
+            # Save LLM config section
+            if llm_data:
+                from dbot.config.models import LLMConfig
+
+                # Merge with defaults to ensure all fields present
+                current = self.get_section("llm")
+                current.update(llm_data)
+                LLMConfig.model_validate(current)  # validate before saving
+                self.set_section("llm", current)
+
+            logger.info(
+                "Migrated LLM config from llm.yaml (%d provider keys)",
+                migrated_keys,
+            )
+        except Exception:
+            logger.exception("Failed to migrate llm.yaml")
 
         self._mark_migration(migration_name)
 

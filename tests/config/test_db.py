@@ -120,3 +120,92 @@ class TestMigration:
         # No credentials.yaml — should not fail
         db = ConfigDB(tmp_path / "test.db", tmp_path / ".key")
         assert db.get_all_credential_packs() == []
+
+
+class TestLLMMigration:
+    def test_llm_yaml_migrates_config(self, tmp_path: Path) -> None:
+        yaml_content = """
+default_model: anthropic:claude-sonnet-4-5
+temperature: 0.7
+max_tokens: 2048
+available_models:
+  Claude: anthropic:claude-sonnet-4-5
+  GPT: openai:gpt-4o
+"""
+        (tmp_path / "llm.yaml").write_text(yaml_content)
+        db = ConfigDB(tmp_path / "test.db", tmp_path / ".key")
+        llm = db.get_section("llm")
+        assert llm["default_model"] == "anthropic:claude-sonnet-4-5"
+        assert llm["temperature"] == 0.7
+        assert llm["max_tokens"] == 2048
+        assert llm["available_models"]["Claude"] == "anthropic:claude-sonnet-4-5"
+        assert llm["available_models"]["GPT"] == "openai:gpt-4o"
+
+    def test_llm_yaml_migrates_provider_keys(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("TEST_OPENAI_KEY", "sk-migrated")
+        yaml_content = """
+default_model: openai:gpt-4o
+providers:
+  openai:
+    api_key: ${TEST_OPENAI_KEY}
+    base_url: https://proxy.example.com/v1
+"""
+        (tmp_path / "llm.yaml").write_text(yaml_content)
+        db = ConfigDB(tmp_path / "test.db", tmp_path / ".key")
+        # Key should be encrypted in DB
+        assert db.get_provider_key("openai") == "sk-migrated"
+        # Base URL should be in LLM config
+        llm = db.get_section("llm")
+        assert llm["providers"]["openai"]["base_url"] == "https://proxy.example.com/v1"
+
+    def test_llm_yaml_migration_skipped_if_done(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("K", "v")
+        (tmp_path / "llm.yaml").write_text("default_model: test\nproviders:\n  openai:\n    api_key: ${K}\n")
+        db1 = ConfigDB(tmp_path / "test.db", tmp_path / ".key")
+        assert db1.get_section("llm")["default_model"] == "test"
+        db1.close()
+        # Remove yaml, reopen — migration already done
+        (tmp_path / "llm.yaml").unlink()
+        db2 = ConfigDB(tmp_path / "test.db", tmp_path / ".key")
+        assert db2.get_section("llm")["default_model"] == "test"
+
+    def test_llm_yaml_without_file(self, tmp_path: Path) -> None:
+        db = ConfigDB(tmp_path / "test.db", tmp_path / ".key")
+        # Should use defaults, not crash
+        llm = db.get_section("llm")
+        assert llm["default_model"] == "openai:gpt-4o"
+
+    def test_llm_yaml_missing_env_var_skips_key(self, tmp_path: Path) -> None:
+        import os
+
+        os.environ.pop("NONEXISTENT_KEY_XYZ", None)
+        yaml_content = """
+providers:
+  openai:
+    api_key: ${NONEXISTENT_KEY_XYZ}
+    base_url: https://proxy.com
+"""
+        (tmp_path / "llm.yaml").write_text(yaml_content)
+        db = ConfigDB(tmp_path / "test.db", tmp_path / ".key")
+        # Key not set (env var missing), but base_url still saved
+        assert db.get_provider_key("openai") is None
+        llm = db.get_section("llm")
+        assert llm["providers"]["openai"]["base_url"] == "https://proxy.com"
+
+    def test_llm_yaml_multiple_providers(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("OAI_KEY", "sk-oai")
+        monkeypatch.setenv("ANT_KEY", "sk-ant")
+        yaml_content = """
+providers:
+  openai:
+    api_key: ${OAI_KEY}
+  anthropic:
+    api_key: ${ANT_KEY}
+    base_url: https://ant-proxy.com
+"""
+        (tmp_path / "llm.yaml").write_text(yaml_content)
+        db = ConfigDB(tmp_path / "test.db", tmp_path / ".key")
+        assert db.get_provider_key("openai") == "sk-oai"
+        assert db.get_provider_key("anthropic") == "sk-ant"
+        llm = db.get_section("llm")
+        assert llm["providers"]["anthropic"]["base_url"] == "https://ant-proxy.com"
