@@ -30,6 +30,9 @@ class IRDeps:
     audit: AuditLogger
     guardrails: GuardrailConfig
 
+    # Config DB for live credential reload (optional — None in tests)
+    config_db: Any = None
+
     # Per-run configuration
     model_name: str = "openai:gpt-4o"
 

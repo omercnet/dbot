@@ -159,6 +159,46 @@ async def list_packs(request: Request) -> JSONResponse:
     return JSONResponse(packs)
 
 
+async def get_pack_params(request: Request) -> JSONResponse:
+    """GET /api/packs/{pack}/params — returns ParamDef metadata for a pack."""
+    pack = request.path_params["pack"]
+    catalog = _catalog
+    integration = next((i for i in catalog._integrations.values() if i.pack == pack), None)
+    if not integration:
+        return JSONResponse({"error": f"Pack '{pack}' not found"}, status_code=404)
+    # Return non-hidden params (no credential values — only metadata)
+    params = [p.model_dump() for p in integration.params if not p.hidden]
+    return JSONResponse({"pack": pack, "params": params})
+
+
+async def get_pack_readme(request: Request) -> JSONResponse:
+    """GET /api/packs/{pack}/readme — returns description + README content."""
+    pack = request.path_params["pack"]
+    catalog = _catalog
+    integration = next((i for i in catalog._integrations.values() if i.pack == pack), None)
+    if not integration:
+        return JSONResponse({"error": f"Pack '{pack}' not found"}, status_code=404)
+
+    content_root = Path(__file__).parent.parent.parent / "content"
+    py_path = Path(integration.py_path)
+    integ_dir = py_path.parent
+    desc_md = integ_dir / f"{integration.name}_description.md"
+    readme_md = content_root / "Packs" / pack / "README.md"
+
+    description = desc_md.read_text(encoding="utf-8") if desc_md.exists() else ""
+    readme = readme_md.read_text(encoding="utf-8") if readme_md.exists() else ""
+
+    return JSONResponse(
+        {
+            "pack": pack,
+            "description": description or integration.description,
+            "readme": readme,
+            "display": integration.display,
+            "category": integration.category,
+        }
+    )
+
+
 async def settings_health(request: Request) -> JSONResponse:
     """GET /api/settings/health — config system health."""
     db = _config_db
@@ -353,6 +393,8 @@ def make_settings_router() -> Router:
             Route("/api/settings/{section}", get_section, methods=["GET"]),
             Route("/api/settings/{section}", put_section, methods=["PUT"]),
             Route("/api/settings", get_all_settings, methods=["GET"]),
+            Route("/api/packs/{pack}/params", get_pack_params, methods=["GET"]),
+            Route("/api/packs/{pack}/readme", get_pack_readme, methods=["GET"]),
             Route("/api/packs", list_packs, methods=["GET"]),
             Route("/settings", settings_page, methods=["GET"]),
         ]

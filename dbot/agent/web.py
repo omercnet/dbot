@@ -98,6 +98,7 @@ def _bootstrap_deps(
         audit=AuditLogger(audit_path=audit_log or Path("dbot-agent-audit.log")),
         guardrails=config,
         model_name=model_name,
+        config_db=config_db,
     )
     return deps, model_name, catalog, config_db
 

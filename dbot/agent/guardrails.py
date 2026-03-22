@@ -166,6 +166,22 @@ def build_toolset(config: GuardrailConfig) -> AbstractToolset:
                 "description": f"{command.name} is a dangerous operation. Human approval required.",
             }
 
+        # Live-reload credentials from DB (picks up saves from settings UI)
+        if deps.config_db is not None:
+            for pack_name in deps.config_db.get_all_credential_packs_filtered():
+                deps.credential_store._credentials[pack_name] = deps.config_db.get_decrypted_pack(pack_name)
+
+        # Check credentials — if pack needs creds but none configured, return credentials_required
+        if integration.credential_params and not deps.credential_store.has(integration.pack):
+            logger.info("Credentials required for %s (pack: %s)", tool_name, integration.pack)
+            return {
+                "status": "credentials_required",
+                "tool_name": tool_name,
+                "pack": integration.pack,
+                "error": f"Pack '{integration.pack}' requires credentials. Configure via /settings.",
+                "required_credentials": [p.name for p in integration.params if p.is_credential],
+            }
+
         # Execute
         params = deps.credential_store.get(integration.pack)
         start = time.monotonic()
