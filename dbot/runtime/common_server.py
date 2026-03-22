@@ -145,7 +145,7 @@ def _shim_distutils() -> None:
                 return NotImplemented
             return self._cmp(other) >= 0
 
-        def _cmp(self, other: LooseVersion) -> int:  # noqa: F821
+        def _cmp(self, other: "LooseVersion") -> int:
             for a, b in zip(self._parts, other._parts, strict=False):
                 if type(a) is type(b):
                     if a < b:  # type: ignore[operator]
