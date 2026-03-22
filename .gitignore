@@ -24,8 +24,9 @@ env/
 htmlcov/
 .mypy_cache/
 
-# dbot specific
+# dbot specific — NEVER commit these (contain secrets)
 config/credentials.yaml
+config/llm.yaml
 config/.dbot-key
 config/dbot.db
 dbot-audit.log
