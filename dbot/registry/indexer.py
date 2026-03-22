@@ -123,7 +123,7 @@ def parse_integration_yaml(yml_path: Path) -> IntegrationDef | None:
             default=(str(cfg["defaultvalue"]) if cfg.get("defaultvalue") is not None else None),
             is_credential=cfg.get("type") == 9,
             hidden=bool(cfg.get("hidden", False) or cfg.get("hiddenusername", False)),
-            options=cfg.get("options"),
+            options=_coerce_options(cfg.get("options")),
         )
         params.append(param)
         if param.is_credential:
