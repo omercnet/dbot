@@ -7,7 +7,7 @@ Get dbot running in under 5 minutes.
 ## Prerequisites
 
 - Python 3.13+
-- [uv](https://docs.astral.sh/uv/) (Python package manager)
+- [hatch](https://hatch.pypa.io/) (`pip install hatch`)
 - git
 
 ---
@@ -30,8 +30,7 @@ submodule with sparse checkout. Only the packs you need are downloaded.
 git submodule update --init
 ```
 
-The submodule is already configured for sparse checkout with ~24 priority
-packs. To add more packs:
+The submodule is pre-configured with ~24 priority packs. To add more:
 
 ```bash
 cd content
@@ -39,95 +38,100 @@ git sparse-checkout add Packs/YourPackName
 cd ..
 ```
 
-Verify the submodule is working:
+---
+
+## 3. Set Up the Environment
 
 ```bash
-ls content/Packs/HelloWorld/Integrations/HelloWorld/HelloWorld.py
-ls content/Packs/Base/Scripts/CommonServerPython/CommonServerPython.py
+hatch env create
+```
+
+This creates an isolated virtualenv with all runtime and dev dependencies
+(PydanticAI, FastMCP, cryptography, ruff, pytest, etc).
+
+---
+
+## 4. Launch the Web UI
+
+```bash
+hatch run dbot-web
+```
+
+Open `http://127.0.0.1:7932` in your browser.
+
+- Without an LLM API key: you'll see the **settings page** at `/settings`
+  where you can configure everything via the browser.
+- With an API key: the full **chat UI** loads at `/` with tool call
+  visualization, model selector, and streaming responses.
+
+### Setting your API key
+
+Option A -- environment variable:
+```bash
+OPENAI_API_KEY=sk-... hatch run dbot-web
+```
+
+Option B -- via the settings page:
+1. Go to `http://127.0.0.1:7932/settings`
+2. Click the **LLM** tab, set your default model
+3. Click the **Credentials** tab, add your API keys
+4. Restart the server
+
+---
+
+## 5. Alternative: Terminal Chat
+
+```bash
+OPENAI_API_KEY=sk-... hatch run dbot-chat
+```
+
+Interactive REPL for IR investigations. Commands:
+- Type your question and press Enter
+- `/reset` -- clear conversation history
+- `/quit` -- exit
+
+---
+
+## 6. Alternative: Autonomous Responder
+
+Investigate an alert autonomously:
+
+```bash
+hatch run dbot-respond alert.json
+hatch run dbot-respond alert.json --output json --output-file report.json
+hatch run dbot-respond alert.json --no-hitl --block-category Endpoint
+```
+
+Or pipe from stdin:
+
+```bash
+echo '{"id":"alert-1","title":"Suspicious IP","severity":"high"}' | hatch run dbot-respond
 ```
 
 ---
 
-## 3. Install Dependencies
+## 7. Alternative: File Watcher
+
+Watch a directory for new alert JSON files:
 
 ```bash
-uv sync --all-extras
+hatch run dbot-watch ./alerts/ --output-dir ./reports/
 ```
 
-This installs all runtime and dev dependencies (FastMCP, PydanticAI, pytest,
-ruff, mypy).
+New `.json` files dropped into `./alerts/` are automatically investigated.
+Reports appear in `./reports/`. Processed files move to `./alerts/done/`.
 
 ---
 
-## 4. Configure Credentials
+## 8. Alternative: MCP Server (external clients)
 
-Copy the example credential file and fill in your API keys:
-
-```bash
-cp config/credentials.yaml.example config/credentials.yaml
-```
-
-Edit `config/credentials.yaml`:
-
-```yaml
-VirusTotal:
-  apikey: ${VT_API_KEY}       # reads from env var
-
-Shodan:
-  apikey: your-actual-key-here  # or hardcode (less secure)
-```
-
-Set environment variables:
-
-```bash
-export VT_API_KEY=your_virustotal_key
-export SHODAN_API_KEY=your_shodan_key
-```
-
-See [credentials.md](credentials.md) for the full credential configuration
-guide.
-
----
-
-## 5. (Optional) Configure Enabled Packs
-
-By default, dbot indexes all packs in the content submodule. To limit which
-packs are available:
-
-```bash
-cp config/enabled_packs.yaml.example config/enabled_packs.yaml
-```
-
-Edit to list only the packs you want:
-
-```yaml
-enabled_packs:
-  - VirusTotal
-  - Shodan_v2
-  - CrowdStrikeFalcon
-```
-
----
-
-## 6. Run the Server
-
-```bash
-uv run python -m dbot.server
-```
-
-The server starts on stdio transport by default (for MCP client integration).
-
----
-
-## 7. Connect from Claude Desktop
-
-Add to your `claude_desktop_config.json`:
+For Claude Desktop, add to `claude_desktop_config.json`:
 
 ```json
 {
   "mcpServers": {
     "dbot": {
-      "command": "uv",
+      "command": "hatch",
       "args": ["run", "python", "-m", "dbot.server"],
       "cwd": "/absolute/path/to/dbot"
     }
@@ -135,17 +139,13 @@ Add to your `claude_desktop_config.json`:
 }
 ```
 
-Restart Claude Desktop. You should see dbot's 3 tools available.
-
----
-
-## 8. Connect from PydanticAI
+For PydanticAI:
 
 ```python
 from pydantic_ai import Agent
 from pydantic_ai.mcp import MCPServerStdio
 
-server = MCPServerStdio("uv", args=["run", "python", "-m", "dbot.server"])
+server = MCPServerStdio("hatch", args=["run", "python", "-m", "dbot.server"])
 agent = Agent("openai:gpt-4o", toolsets=[server])
 
 async with agent.run("Check if 8.8.8.8 is malicious") as result:
@@ -157,34 +157,106 @@ async with agent.run("Check if 8.8.8.8 is malicious") as result:
 ## 9. Run Tests
 
 ```bash
-hatch run test          # full suite (157 tests)
-hatch run test-quick    # skip integration tests
-hatch run lint          # ruff check + format check
-hatch run fmt           # autofix + format
-hatch run check         # lint + typecheck + test (CI gate)
+hatch run test           # full suite (226 tests)
+hatch run test-quick     # skip integration tests (faster)
+hatch run lint           # ruff check + format check
+hatch run fmt            # autofix + format
+hatch run typecheck      # mypy strict
+hatch run check          # lint + typecheck + test (CI gate)
 ```
-
-All 157 tests should pass.
 
 ---
 
-## 10. Execution Modes
+## 10. Configuration
 
-dbot supports two execution modes:
+dbot stores all config in a SQLite database (`config/dbot.db`), manageable
+via the web UI at `/settings` or the REST API.
 
-| Mode | Env Var | Use Case |
-|------|---------|----------|
-| `inprocess` (default) | `DBOT_EXECUTION_MODE=inprocess` | Fast, for development |
-| `subprocess` | `DBOT_EXECUTION_MODE=subprocess` | Isolated, for production |
+### Via web UI
+
+Go to `http://127.0.0.1:7932/settings`. Six tabs:
+
+| Tab | What you configure |
+|-----|-------------------|
+| General | Execution mode, audit log path |
+| LLM | Default model, available models, temperature, max tokens |
+| Guardrails | Max tool calls, timeout, blocked categories/tools |
+| Packs | Which integration packs to index |
+| Credentials | API keys per pack (encrypted at rest) |
+| Pack Inventory | Read-only view of indexed packs + command counts |
+
+### Via REST API
 
 ```bash
-# Production mode
-DBOT_EXECUTION_MODE=subprocess uv run python -m dbot.server
+# Get all settings
+curl http://127.0.0.1:7932/api/settings
+
+# Update LLM config
+curl -X PUT http://127.0.0.1:7932/api/settings/llm \
+  -H 'Content-Type: application/json' \
+  -d '{"default_model": "anthropic:claude-sonnet-4-5", "temperature": 0.1, "max_tokens": 4096, "available_models": {}}'
+
+# Add credentials
+curl -X PUT http://127.0.0.1:7932/api/settings/credentials/VirusTotal \
+  -H 'Content-Type: application/json' \
+  -d '{"apikey": "your-vt-api-key"}'
+
+# Test connection
+curl -X POST http://127.0.0.1:7932/api/settings/credentials/VirusTotal/test
+
+# List indexed packs
+curl http://127.0.0.1:7932/api/packs
+```
+
+### Via credentials.yaml (legacy)
+
+On first startup, dbot auto-migrates `config/credentials.yaml` into the
+SQLite database. After migration, all credential management happens through
+the web UI or API.
+
+```bash
+cp config/credentials.yaml.example config/credentials.yaml
+# Edit with your API keys, then start dbot-web
+```
+
+---
+
+## 11. CLI Reference
+
+| Command | Description |
+|---------|-------------|
+| `hatch run dbot-web` | Web UI (chat + settings) |
+| `hatch run dbot-chat` | Terminal chat REPL |
+| `hatch run dbot-respond ALERT.json` | Autonomous investigation |
+| `hatch run dbot-watch DIR` | File-drop alert watcher |
+| `hatch run python -m dbot.server` | MCP server (stdio) |
+
+### Common flags
+
+```
+--model TEXT          LLM model [env: DBOT_LLM_MODEL, default: openai:gpt-4o]
+--audit-log PATH     Audit log file [default: dbot-agent-audit.log]
+--port INT           Web UI port [default: 7932] (dbot-web only)
+--max-calls INT      Max tool calls [default: 30] (dbot-respond/watch)
+--block-category TXT Block tools from category (dbot-respond/watch, repeatable)
+--no-hitl            Auto-deny dangerous tools (dbot-respond only)
+--output FORMAT      Report format: markdown|json|jsonl (dbot-respond only)
 ```
 
 ---
 
 ## Troubleshooting
+
+### "No LLM API key configured" on web UI
+
+Set your provider's API key:
+```bash
+OPENAI_API_KEY=sk-... hatch run dbot-web
+# or
+ANTHROPIC_API_KEY=sk-... hatch run dbot-web --model anthropic:claude-sonnet-4-5
+```
+
+Or configure via `/settings` in the browser.
 
 ### "content submodule not initialized"
 
@@ -194,26 +266,22 @@ git submodule update --init
 
 ### "CommonServerPython.py not found"
 
-The content submodule sparse checkout may not include the Base pack:
-
 ```bash
 cd content
 git sparse-checkout add Packs/Base/Scripts/CommonServerPython
 cd ..
 ```
 
-### "Environment variable 'X' not set"
+### "No module named 'distutils'"
 
-Your credentials.yaml references an env var that isn't set. Either set it
-or replace `${VAR}` with the actual value in credentials.yaml.
+dbot includes a shim for Python 3.12+. If you still see this, ensure you're
+running Python 3.13+ (`python --version`).
 
 ### Import errors from integrations
 
-Some integrations have Python dependencies not included in dbot. Install
-them as needed:
-
+Some integrations need additional Python packages:
 ```bash
-uv pip install <missing-package>
+hatch run pip install dateparser tldextract
 ```
 
 ---

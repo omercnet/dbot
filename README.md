@@ -2,81 +2,106 @@
 
 > Run 1,000+ XSOAR security integrations as MCP tools. No XSOAR required.
 
-dbot is an open-source MCP server that takes the entire
+dbot is an open-source IR agent and MCP server that takes the entire
 [demisto/content](https://github.com/demisto/content) integration library
 (~1,100 security tool integrations) and runs them standalone -- no XSOAR,
-no Cortex, no license. It exposes every integration as an MCP tool that any
-agent (PydanticAI, Claude Desktop, or any MCP client) can call.
+no Cortex, no license.
+
+It ships as both an **MCP server** (for Claude Desktop, PydanticAI, or any
+MCP client) and a **standalone IR agent** with chat, autonomous responder,
+and web UI.
 
 ---
 
 ## Quickstart
 
 ```bash
-# 1. Clone
+# Clone + setup
 git clone https://github.com/omercnet/dbot.git && cd dbot
-
-# 2. Initialize content submodule
 git submodule update --init
+hatch env create
 
-# 3. Install
-uv sync --all-extras
-
-# 4. Configure credentials
-cp config/credentials.yaml.example config/credentials.yaml
-# Edit credentials.yaml -- add your API keys
-
-# 5. Run
-uv run python -m dbot.server
+# Launch web UI
+hatch run dbot-web
+# -> http://127.0.0.1:7932           (chat UI, needs LLM API key)
+# -> http://127.0.0.1:7932/settings  (configure everything via browser)
 ```
 
 See [docs/quickstart.md](docs/quickstart.md) for the full setup guide.
 
 ---
 
+## Four Ways to Use dbot
+
+### 1. Web UI (recommended for getting started)
+
+```bash
+OPENAI_API_KEY=sk-... hatch run dbot-web
+```
+
+Opens PydanticAI's built-in chat interface at `http://127.0.0.1:7932` with:
+- Chat with tool call visualization (collapsible input/output)
+- Model selector dropdown
+- Streaming responses
+- Settings page at `/settings` (LLM config, guardrails, credentials, packs)
+
+### 2. Interactive Chat (terminal)
+
+```bash
+OPENAI_API_KEY=sk-... hatch run dbot-chat
+```
+
+Terminal REPL for IR investigations. Multi-turn conversation with history.
+
+### 3. Autonomous Responder
+
+```bash
+hatch run dbot-respond alert.json --output markdown
+```
+
+Feeds an alert JSON file to the agent. It autonomously investigates using
+available tools and produces a structured IR report (markdown, JSON, or JSONL).
+
+### 4. MCP Server (for external clients)
+
+```bash
+hatch run python -m dbot.server
+```
+
+Stdio MCP server exposing 3 tools (`search_tools`, `get_tool_schema`,
+`invoke_tool`) for Claude Desktop, PydanticAI, or any MCP client.
+
+---
+
 ## Architecture
 
 ```
-MCP Client (Claude / PydanticAI agent)
-         |  MCP protocol (stdio)
-         v
-    dbot MCP server
-    |-- search_tools(query, category?)
-    |-- get_tool_schema(tool_name)
-    |-- invoke_tool(tool_name, args, reason)
-         |              |
-    Registry         Executor
-    YAML index       subprocess per call
-    + search         demistomock injection
-         |              |
-    demisto/content (git submodule, sparse checkout)
+            User / Alert Source
+                   |
+        +----------+----------+
+        |                     |
+   dbot-web/chat         dbot-respond
+   (interactive)         (autonomous)
+        |                     |
+   ChatAgent            ResponderAgent
+        |                     |
+        +----------+----------+
+                   |
+          FunctionToolset (native)
+          +-- search_tools()
+          +-- get_tool_schema()
+          +-- invoke_tool()
+                   |
+          +--------+--------+
+          |                 |
+       Catalog          Executor
+       (YAML index)     (subprocess)
+          |                 |
+     demisto/content    demistomock
 ```
 
-Every XSOAR integration starts with `import demistomock as demisto`. dbot
-provides a fake `demistomock` that injects credentials, captures results,
-and runs each integration in an isolated subprocess.
-
----
-
-## The 3 MCP Tools
-
-| Tool | Purpose |
-|------|---------|
-| `search_tools(query, category?)` | Discover available integrations by keyword. Returns names, descriptions, and arg summaries. |
-| `get_tool_schema(tool_name)` | Get the full argument and output spec for a tool. Secret args are stripped. |
-| `invoke_tool(tool_name, args, reason)` | Execute a tool. `reason` is required for the audit trail. Dangerous tools require human approval. |
-
-The agent calls `search_tools` first, then `get_tool_schema` to understand
-the args, then `invoke_tool` to execute.
-
----
-
-## HITL Gate
-
-Commands marked `execution: true` in the XSOAR YAML are automatically
-flagged dangerous (host isolation, account suspension, firewall changes).
-When the agent tries to invoke one, execution pauses and returns an
-`approval_required` response with full context for a human operator.
+The agent uses **native PydanticAI tools** (not MCP) for zero-overhead
+direct Python calls. The MCP server exists separately for external clients.
 
 ---
 
@@ -84,31 +109,50 @@ When the agent tries to invoke one, execution pauses and returns an
 
 ```
 dbot/
-├── dbot/
-│   ├── server.py              # FastMCP entrypoint
-│   ├── audit.py               # JSON-lines audit logger
-│   ├── runtime/
-│   │   ├── demistomock.py     # XSOAR runtime shim (~50 methods)
-│   │   ├── common_server.py   # CommonServerPython loader
-│   │   ├── executor.py        # In-process + subprocess execution
-│   │   └── runner.py          # Subprocess entry point
-│   ├── registry/
-│   │   ├── models.py          # Pydantic models (IntegrationDef, CommandDef, etc.)
-│   │   ├── indexer.py         # Walks Packs/, parses integration YAMLs
-│   │   └── catalog.py         # In-memory search index
-│   ├── credentials/
-│   │   ├── models.py          # CredentialProfile
-│   │   └── store.py           # Env var / YAML credential resolution
-│   └── tools/
-│       ├── search.py          # search_tools MCP tool
-│       ├── meta.py            # get_tool_schema MCP tool
-│       └── invoke.py          # invoke_tool MCP tool
-├── content/                   # git submodule -> demisto/content
-├── tests/
-├── config/
-│   ├── credentials.yaml.example
-│   └── enabled_packs.yaml.example
-└── pyproject.toml
++-- dbot/
+|   +-- server.py              # FastMCP entrypoint (external clients)
+|   +-- audit.py               # JSON-lines audit logger
+|   +-- agent/
+|   |   +-- chat.py            # ChatAgent (interactive + streaming)
+|   |   +-- responder.py       # ResponderAgent (autonomous + HITL)
+|   |   +-- guardrails.py      # FunctionToolset + FilteredToolset
+|   |   +-- models.py          # Alert, IRReport, Verdict, Severity
+|   |   +-- deps.py            # IRDeps (RunContext dependencies)
+|   |   +-- report.py          # Markdown/JSON/JSONL report renderer
+|   |   +-- web.py             # Web UI (PydanticAI to_web + settings)
+|   |   +-- cli.py             # CLI: dbot-chat, dbot-respond, dbot-watch, dbot-web
+|   |   +-- ingestion/         # Alert loaders (file, stdin, watchdog)
+|   +-- config/
+|   |   +-- db.py              # SQLite config store
+|   |   +-- encryption.py      # Fernet credential encryption
+|   |   +-- api.py             # Settings REST API (10 routes)
+|   |   +-- settings.html      # Settings UI (self-contained)
+|   |   +-- models.py          # Config section Pydantic models
+|   +-- runtime/               # demistomock shim, CSP loader, executor
+|   +-- registry/              # YAML indexer, search catalog
+|   +-- credentials/           # Credential store
++-- content/                   # git submodule -> demisto/content
++-- config/                    # dbot.db, .dbot-key, credentials.yaml
++-- tests/                     # 226 tests
++-- docs/
++-- pyproject.toml
+```
+
+---
+
+## Development
+
+dbot uses [hatch](https://hatch.pypa.io/) for project management.
+
+```bash
+hatch run test           # full test suite (226 tests)
+hatch run test-quick     # skip integration tests
+hatch run lint           # ruff check + format check
+hatch run fmt            # autofix + format
+hatch run typecheck      # mypy strict
+hatch run check          # lint + typecheck + test (CI gate)
+hatch version            # show current version
+hatch version minor      # bump 0.1.0 -> 0.2.0
 ```
 
 ---
@@ -117,29 +161,14 @@ dbot/
 
 | Concern | Choice |
 |---------|--------|
-| MCP server | [FastMCP](https://github.com/jlowin/fastmcp) |
 | Agent framework | [PydanticAI](https://github.com/pydantic/pydantic-ai) |
+| MCP server | [FastMCP](https://github.com/jlowin/fastmcp) |
 | Integration source | [demisto/content](https://github.com/demisto/content) (MIT) |
+| Config/credentials | SQLite + Fernet encryption |
+| Web UI | PydanticAI `agent.to_web()` + custom settings page |
 | Execution model | Subprocess per invocation (in-process for dev) |
-| Credential management | Env vars / YAML (vault-pluggable) |
 | Python | 3.13+ |
-| Packaging | uv + hatch + pyproject.toml |
-| Packaging | uv + pyproject.toml |
-
----
-
-## Status
-
-| Phase | Status |
-|-------|--------|
-| Core runtime (demistomock + CSP loader) | Done |
-| In-process executor | Done |
-| Registry + catalog (YAML indexer, search) | Done |
-| FastMCP server + 3 tools | Done |
-| Subprocess executor + credential store | Done |
-| HITL gate + audit logging | Done |
-| Tier-1 integration validation (20+ integrations) | In progress |
-| Playbook indexer | Planned |
+| Packaging | hatch + uv + pyproject.toml |
 
 ---
 
@@ -149,16 +178,6 @@ dbot/
 - [Architecture](docs/architecture.md) -- how dbot works internally
 - [Credentials](docs/credentials.md) -- configuring API keys and secrets
 - [Integrations](docs/integrations.md) -- adding and validating integrations
-
----
-
-## Why This Matters
-
-- **First FOSS bridge** between the XSOAR integration ecosystem and MCP
-- **1,100+ battle-tested security integrations** available to any LLM agent
-- **Zero commercial dependency** -- no XSOAR license, no Cortex subscription
-- **The mock is the hard part** -- once solid, adding integrations is config not code
-- **demisto/content is MIT licensed** -- dbot inherits that cleanly
 
 ---
 
