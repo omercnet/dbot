@@ -212,19 +212,21 @@ async def put_provider(request: Request) -> JSONResponse:
         env_var = body.get("env_var", "")
 
         # Store API key encrypted (if provided)
+        import os
+
+        from dbot.config.models import KNOWN_PROVIDERS
+
+        resolved_env = env_var or KNOWN_PROVIDERS.get(provider, "")
+
         if api_key:
             db.set_provider_key(provider, api_key)
-
-            # Inject into os.environ immediately so the running process picks it up
-            import os
-
-            from dbot.config.models import KNOWN_PROVIDERS
-
-            resolved_env = env_var or KNOWN_PROVIDERS.get(provider, "")
+            # Inject key into os.environ immediately
             if resolved_env:
                 os.environ[resolved_env] = api_key
-            if base_url:
-                os.environ[f"{provider.upper()}_BASE_URL"] = base_url
+
+        # Always inject base_url if provided (not gated by api_key)
+        if base_url:
+            os.environ[f"{provider.upper()}_BASE_URL"] = base_url
 
         # Store base_url + env_var in LLM config providers section
         from dbot.config.models import ProviderConfig
