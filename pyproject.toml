@@ -25,9 +25,9 @@ dbot-watch = "dbot.agent.cli:watch_app"
 dbot-web = "dbot.agent.cli:web_app_typer"
 
 [project.urls]
-Documentation = "https://github.com/yourorg/dbot#readme"
-Issues = "https://github.com/yourorg/dbot/issues"
-Source = "https://github.com/yourorg/dbot"
+Documentation = "https://github.com/omercnet/dbot#readme"
+Issues = "https://github.com/omercnet/dbot/issues"
+Source = "https://github.com/omercnet/dbot"
 
 [build-system]
 requires = ["hatchling"]

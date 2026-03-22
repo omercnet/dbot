@@ -15,7 +15,7 @@ Get dbot running in under 5 minutes.
 ## 1. Clone the Repository
 
 ```bash
-git clone https://github.com/yourorg/dbot.git
+git clone https://github.com/omercnet/dbot.git
 cd dbot
 ```
 

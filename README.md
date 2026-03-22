@@ -14,7 +14,7 @@ agent (PydanticAI, Claude Desktop, or any MCP client) can call.
 
 ```bash
 # 1. Clone
-git clone https://github.com/yourorg/dbot.git && cd dbot
+git clone https://github.com/omercnet/dbot.git && cd dbot
 
 # 2. Initialize content submodule
 git submodule update --init
