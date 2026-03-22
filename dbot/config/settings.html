@@ -379,8 +379,16 @@
                   <button id="add-model" class="btn btn-muted" type="button">Add model</button>
                 </div>
               </div>
+
+            <hr style="margin:1.5rem 0;border-color:#e0e0e0">
+            <h3 style="margin-bottom:1rem">LLM Provider API Keys</h3>
+            <p style="color:#666;font-size:0.9rem;margin-bottom:1rem">Configure API keys for each LLM provider. Keys are encrypted at rest.</p>
+            <div id="providers-list"></div>
+            <div class="btn-row" style="margin-top:0.5rem">
+              <button id="add-provider" class="btn btn-muted" type="button">Add custom provider</button>
             </div>
-            <div class="btn-row"><button class="btn btn-save" type="submit">Save</button></div>
+
+            <div class="btn-row" style="margin-top:1.5rem"><button class="btn btn-save" type="submit">Save LLM Settings</button></div>
           </form>
         </div>
 
@@ -467,8 +475,10 @@
     const state = {
       settings: { general: {}, llm: {}, guardrails: {}, packs: {} },
       credentials: {},
+      providers: {},
       inventory: [],
       loadedInventory: false,
+      loadedProviders: false,
     };
 
     const byId = (id) => document.getElementById(id);
@@ -511,6 +521,7 @@
       if (target) target.classList.add('active');
       if (tab === 'inventory' && !state.loadedInventory) loadInventory();
       if (tab === 'credentials') loadCredentials();
+      if (tab === 'llm' && !state.loadedProviders) loadProviders();
     }
 
     function addModelRow(label = '', modelId = '') {
@@ -590,6 +601,94 @@
         max_tokens: Number(byId('max_tokens').value || 0),
         available_models,
       };
+    }
+
+    // ── LLM Providers ─────────────────────────────────────────────
+
+    async function loadProviders() {
+      try {
+        state.providers = await api('/api/settings/providers');
+        state.loadedProviders = true;
+        renderProviders();
+      } catch (err) {
+        toast(`Failed to load providers: ${err.message}`, false);
+      }
+    }
+
+    function renderProviders() {
+      const list = byId('providers-list');
+      if (!list) return;
+      list.innerHTML = '';
+      const providers = Object.entries(state.providers).sort((a, b) => a[0].localeCompare(b[0]));
+
+      providers.forEach(([name, cfg]) => {
+        const card = document.createElement('div');
+        card.className = 'cred-card';
+        card.style.cssText = 'margin-bottom:0.75rem;padding:1rem;border:1px solid #e0e0e0;border-radius:6px;background:#fafafa';
+        const hasKey = cfg.has_key;
+        const badge = hasKey
+          ? '<span style="color:#27ae60;font-weight:600">\u2713 Key set</span>'
+          : '<span style="color:#999">No key</span>';
+        card.innerHTML = `
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem">
+            <strong style="font-size:1.05rem">${name}</strong>
+            ${badge}
+          </div>
+          <div class="form-grid" style="gap:0.5rem">
+            <div class="form-field">
+              <label>API Key</label>
+              <input type="password" class="prov-key" placeholder="${hasKey ? '●●●●●●●● (unchanged)' : 'Enter API key'}" />
+            </div>
+            <div class="form-field">
+              <label>Base URL (optional)</label>
+              <input type="text" class="prov-url" value="${cfg.base_url || ''}" placeholder="Leave empty for default" />
+            </div>
+            <div class="form-field">
+              <label>Env var</label>
+              <input type="text" class="prov-env" value="${cfg.env_var || ''}" placeholder="e.g. OPENAI_API_KEY" />
+            </div>
+          </div>
+          <div class="btn-row" style="margin-top:0.5rem">
+            <button class="btn btn-save" type="button" onclick="saveProvider('${name}')">Save</button>
+            ${hasKey ? '<button class="btn btn-danger" type="button" onclick="deleteProvider(\'' + name + '\')" style="margin-left:0.5rem">Remove Key</button>' : ''}
+          </div>
+        `;
+        list.appendChild(card);
+      });
+    }
+
+    async function saveProvider(name) {
+      const cards = byId('providers-list').children;
+      let card;
+      for (const c of cards) {
+        if (c.querySelector('strong')?.textContent === name) { card = c; break; }
+      }
+      if (!card) return;
+      const key = card.querySelector('.prov-key').value.trim();
+      const url = card.querySelector('.prov-url').value.trim();
+      const env = card.querySelector('.prov-env').value.trim();
+      const payload = { base_url: url, env_var: env };
+      if (key) payload.api_key = key;
+      try {
+        await api(`/api/settings/providers/${name}`, { method: 'PUT', body: JSON.stringify(payload) });
+        toast(`${name} provider saved`);
+        state.loadedProviders = false;
+        await loadProviders();
+      } catch (err) {
+        toast(`Failed to save ${name}: ${err.message}`, false);
+      }
+    }
+
+    async function deleteProvider(name) {
+      if (!confirm(`Remove API key for ${name}?`)) return;
+      try {
+        await api(`/api/settings/providers/${name}`, { method: 'DELETE' });
+        toast(`${name} key removed`);
+        state.loadedProviders = false;
+        await loadProviders();
+      } catch (err) {
+        toast(`Failed to delete ${name}: ${err.message}`, false);
+      }
     }
 
     function renderCredentials() {
@@ -873,6 +972,7 @@
       wireEvents();
       await loadSettings();
       await loadCredentials();
+      await loadProviders();
     }
 
     init();
