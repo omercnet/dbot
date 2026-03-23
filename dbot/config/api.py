@@ -225,7 +225,7 @@ async def settings_health(request: Request) -> JSONResponse:
 
 
 async def list_providers(request: Request) -> JSONResponse:
-    """GET /api/settings/providers — list configured providers (names + base_url, no keys)."""
+    """GET /api/settings/providers — list only CONFIGURED providers."""
     db = _config_db
     from dbot.config.models import KNOWN_PROVIDERS
 
@@ -234,20 +234,41 @@ async def list_providers(request: Request) -> JSONResponse:
     providers_config = llm_config.get("providers", {})
 
     result = {}
-    for provider, default_env in KNOWN_PROVIDERS.items():
-        result[provider] = {
-            "has_key": provider in stored_keys,
-            "env_var": providers_config.get(provider, {}).get("env_var", default_env),
-            "base_url": providers_config.get(provider, {}).get("base_url", ""),
-        }
-    # Also include any non-standard providers that have keys stored
     for provider in stored_keys:
-        if provider not in result:
+        spec = KNOWN_PROVIDERS.get(provider)
+        result[provider] = {
+            "has_key": True,
+            "env_var": providers_config.get(provider, {}).get("env_var", spec.env_var if spec else ""),
+            "base_url": providers_config.get(provider, {}).get("base_url", ""),
+            "description": spec.description if spec else "",
+        }
+    for provider, cfg in providers_config.items():
+        if provider not in result and cfg.get("base_url"):
+            spec = KNOWN_PROVIDERS.get(provider)
             result[provider] = {
-                "has_key": True,
-                "env_var": providers_config.get(provider, {}).get("env_var", ""),
-                "base_url": providers_config.get(provider, {}).get("base_url", ""),
+                "has_key": provider in stored_keys,
+                "env_var": cfg.get("env_var", spec.env_var if spec else ""),
+                "base_url": cfg.get("base_url", ""),
+                "description": spec.description if spec else "",
             }
+    return JSONResponse(result)
+
+
+async def available_providers(request: Request) -> JSONResponse:
+    """GET /api/settings/providers/available — all known providers with specs."""
+    from dbot.config.models import KNOWN_PROVIDERS
+
+    db = _config_db
+    stored_keys = db.get_all_provider_keys()
+    llm_config = db.get_section("llm")
+    providers_config = llm_config.get("providers", {})
+
+    result = {}
+    for name, spec in KNOWN_PROVIDERS.items():
+        result[name] = {
+            **spec.model_dump(),
+            "configured": name in stored_keys or bool(providers_config.get(name, {}).get("base_url")),
+        }
     return JSONResponse(result)
 
 
@@ -261,22 +282,21 @@ async def put_provider(request: Request) -> JSONResponse:
         base_url = body.get("base_url", "")
         env_var = body.get("env_var", "")
 
-        # Store API key encrypted (if provided)
         import os
 
         from dbot.config.models import KNOWN_PROVIDERS
 
-        resolved_env = env_var or KNOWN_PROVIDERS.get(provider, "")
+        spec = KNOWN_PROVIDERS.get(provider)
+        resolved_env = env_var or (spec.env_var if spec else "")
 
         if api_key:
             db.set_provider_key(provider, api_key)
-            # Inject key into os.environ immediately
             if resolved_env:
                 os.environ[resolved_env] = api_key
 
-        # Always inject base_url if provided (not gated by api_key)
         if base_url:
-            os.environ[f"{provider.upper()}_BASE_URL"] = base_url
+            base_url_env = (spec.base_url_env if spec else "") or f"{provider.upper()}_BASE_URL"
+            os.environ[base_url_env] = base_url
 
         # Store base_url + env_var in LLM config providers section
         from dbot.config.models import ProviderConfig
@@ -394,6 +414,7 @@ def make_settings_router() -> Router:
             Route("/api/reload", reload_app, methods=["POST"]),
             Route("/api/settings/providers/{provider}", put_provider, methods=["PUT"]),
             Route("/api/settings/providers/{provider}", delete_provider, methods=["DELETE"]),
+            Route("/api/settings/providers/available", available_providers, methods=["GET"]),
             Route("/api/settings/providers", list_providers, methods=["GET"]),
             Route("/api/settings/credentials/{pack}/test", test_connection, methods=["POST"]),
             Route("/api/settings/credentials/{pack}", put_credentials, methods=["PUT"]),

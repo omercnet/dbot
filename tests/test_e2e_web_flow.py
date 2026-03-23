@@ -88,10 +88,17 @@ class TestProviderCRUD:
     def test_list_providers_returns_known_providers(self, e2e_app: TestClient) -> None:
         r = e2e_app.get("/api/settings/providers")
         assert r.status_code == 200
-        providers = r.json()
-        assert "openai" in providers
-        assert "anthropic" in providers
-        assert providers["openai"]["has_key"] is False
+        assert isinstance(r.json(), dict)
+
+    def test_available_providers_lists_all_known(self, e2e_app: TestClient) -> None:
+        r = e2e_app.get("/api/settings/providers/available")
+        assert r.status_code == 200
+        data = r.json()
+        assert "openai" in data
+        assert "azure" in data
+        assert "ollama" in data
+        assert data["azure"]["needs_base_url"] is True
+        assert data["ollama"]["needs_api_key"] is False
 
     def test_save_provider_key(self, e2e_app: TestClient) -> None:
         r = e2e_app.put(
@@ -121,7 +128,7 @@ class TestProviderCRUD:
         assert r.json()["deleted"] is True
 
         r2 = e2e_app.get("/api/settings/providers")
-        assert r2.json()["groq"]["has_key"] is False
+        assert "groq" not in r2.json()
 
     def test_update_existing_provider_key(self, e2e_app: TestClient) -> None:
         e2e_app.put("/api/settings/providers/anthropic", json={"api_key": "sk-old"})

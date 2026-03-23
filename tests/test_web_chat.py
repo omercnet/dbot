@@ -173,8 +173,7 @@ class TestChatWithSettingsCoexistence:
         """Settings routes must work even with chat routes present."""
         r = chat_app.get("/api/settings/providers")
         assert r.status_code == 200
-        data = r.json()
-        assert "openai" in data
+        assert isinstance(r.json(), dict)
 
     def test_settings_health(self, chat_app: TestClient) -> None:
         r = chat_app.get("/api/settings/health")

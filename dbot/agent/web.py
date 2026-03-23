@@ -73,17 +73,15 @@ def _bootstrap_deps(
     providers_config = llm_config.get("providers", {})
     provider_keys = config_db.get_all_provider_keys()
     for provider, api_key in provider_keys.items():
-        # Determine env var name: custom > known default
         prov_cfg = providers_config.get(provider, {})
-        env_var = prov_cfg.get("env_var") or KNOWN_PROVIDERS.get(provider, "")
+        spec = KNOWN_PROVIDERS.get(provider)
+        env_var = prov_cfg.get("env_var") or (spec.env_var if spec else "")
         if env_var and env_var not in os.environ:
             os.environ[env_var] = api_key
 
-        # Set base URL if configured
         base_url = prov_cfg.get("base_url", "")
         if base_url:
-            # PydanticAI uses provider-specific env vars for base URLs
-            base_env = f"{provider.upper()}_BASE_URL"
+            base_env = (spec.base_url_env if spec else "") or f"{provider.upper()}_BASE_URL"
             if base_env not in os.environ:
                 os.environ[base_env] = base_url
 
@@ -132,8 +130,11 @@ def create_app(
         deps_type=IRDeps,
     )
 
+    from dbot.config.models import KNOWN_PROVIDERS
+
     llm_config = config_db.get_section("llm")
-    configured_providers = set(config_db.get_all_provider_keys().keys()) | {"ollama"}
+    no_key_providers = {n for n, s in KNOWN_PROVIDERS.items() if not s.needs_api_key}
+    configured_providers = set(config_db.get_all_provider_keys().keys()) | no_key_providers
     all_models = (
         models
         or llm_config.get("available_models", {})
