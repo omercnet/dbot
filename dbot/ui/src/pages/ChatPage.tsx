@@ -1,4 +1,6 @@
+import { useMemo, useState } from "react";
 import { ChatInput } from "../components/ChatInput";
+import { CredentialDialog, detectCredentialRequired } from "../components/CredentialDialog";
 import { MessageList } from "../components/MessageList";
 import { useDbotChat } from "../hooks/useChat";
 import { useModels } from "../hooks/useModels";
@@ -6,6 +8,32 @@ import { useModels } from "../hooks/useModels";
 export function ChatPage({ onSettings }: { onSettings: () => void }) {
   const { models, selected, setSelected } = useModels();
   const { messages, sendMessage, status } = useDbotChat(selected);
+  const [lastUserText, setLastUserText] = useState("");
+
+  const credRequired = useMemo(
+    () => (status === "ready" || status === "error" ? detectCredentialRequired(messages) : null),
+    [messages, status],
+  );
+
+  function handleSend(text: string) {
+    setLastUserText(text);
+    sendMessage({ text });
+  }
+
+  async function handleCredentialSave(pack: string, credentials: Record<string, string>) {
+    const entries = Object.entries(credentials).filter(([, v]) => v);
+    for (const [name, value] of entries) {
+      await fetch(`/api/settings/credentials/${encodeURIComponent(pack)}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ [name]: value }),
+      });
+    }
+    if (lastUserText) {
+      sendMessage({ text: lastUserText });
+    }
+    return true;
+  }
 
   return (
     <div className="chat-layout">
@@ -31,7 +59,11 @@ export function ChatPage({ onSettings }: { onSettings: () => void }) {
         </button>
       </header>
       <MessageList messages={messages} status={status} />
-      <ChatInput onSend={(text) => sendMessage({ text })} status={status} />
+      <ChatInput onSend={handleSend} status={status} />
+
+      {credRequired && (
+        <CredentialDialog cred={credRequired} onSave={handleCredentialSave} onDismiss={() => {}} />
+      )}
     </div>
   );
 }

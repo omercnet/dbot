@@ -58,7 +58,7 @@ describe("MessageBubble", () => {
       ],
     });
     render(<MessageBubble message={msg} isStreaming={false} />);
-    expect(screen.getByTestId("tool-badge")).toHaveTextContent("search_tools");
-    expect(screen.getByTestId("tool-badge")).toHaveAttribute("data-state", "done");
+    expect(screen.getByTestId("tool-card")).toHaveTextContent("search_tools");
+    expect(screen.getByTestId("tool-card")).toHaveAttribute("data-state", "done");
   });
 });

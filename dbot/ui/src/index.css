@@ -222,38 +222,81 @@ body,
   }
 }
 
-/* ── Tool Call Badge ────────────────────────────────────────────────── */
+/* ── Tool Call Card ────────────────────────────────────────────────────── */
 
-.tool-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 3px 10px;
-  margin: 4px 0;
-  border-radius: 12px;
+.tool-card {
+  margin: 6px 0;
+  border-radius: var(--radius);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  overflow: hidden;
   font-family: var(--font-mono);
   font-size: 12px;
-  font-weight: 500;
-  border: 1px solid;
 }
 
-.tool-badge[data-state="running"] {
-  border-color: var(--cyan);
-  color: var(--cyan);
-  background: var(--cyan-dim);
+.tool-card[data-state="running"] { border-color: rgba(0, 212, 255, 0.25); }
+.tool-card[data-state="done"]    { border-color: rgba(0, 255, 136, 0.2); }
+.tool-card[data-state="error"]   { border-color: rgba(255, 68, 68, 0.25); }
+
+.tool-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 10px;
+  background: var(--mono-bg);
+  border: none;
+  color: var(--fg-muted);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  cursor: pointer;
+  text-align: left;
 }
 
-.tool-badge[data-state="done"] {
-  border-color: var(--accent);
-  color: var(--accent);
-  background: var(--accent-dim);
+.tool-card-header:disabled { cursor: default; }
+.tool-card-header:hover:not(:disabled) { background: var(--bg-hover); }
+
+.tool-card-icon { flex-shrink: 0; width: 14px; text-align: center; }
+.tool-card-name { font-weight: 600; color: var(--cyan); }
+.tool-card-status { color: var(--fg-dim); }
+.tool-card-chevron { margin-left: auto; font-size: 10px; color: var(--fg-dim); }
+
+.tool-card[data-state="done"] .tool-card-name { color: var(--accent); }
+.tool-card[data-state="error"] .tool-card-name { color: var(--danger); }
+
+.tool-card-body {
+  padding: 8px 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(0, 0, 0, 0.2);
 }
 
-.tool-badge[data-state="error"] {
-  border-color: var(--danger);
-  color: var(--danger);
-  background: rgba(255, 68, 68, 0.1);
+.tool-card-section { margin-bottom: 8px; }
+.tool-card-section:last-child { margin-bottom: 0; }
+
+.tool-card-label {
+  display: block;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--fg-dim);
+  margin-bottom: 4px;
 }
+
+.tool-card-pre {
+  margin: 0;
+  padding: 6px 8px;
+  background: var(--mono-bg);
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  line-height: 1.4;
+  overflow-x: auto;
+  max-height: 200px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.tool-card-error { color: var(--danger); }
 
 .tool-badge .spinner {
   display: inline-block;
@@ -701,4 +744,63 @@ code {
   background-repeat: no-repeat;
   background-position: right 10px center;
   padding-right: 28px;
+}
+
+/* ── Dialog / Modal ────────────────────────────────────────────────────── */
+
+.dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+  animation: fadeIn 0.15s ease-out;
+}
+
+.dialog {
+  background: var(--bg-surface);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius);
+  width: 420px;
+  max-width: 90vw;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+.dialog-header {
+  padding: 16px 20px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.dialog-header h3 {
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.dialog-subtitle {
+  font-size: 13px;
+  color: var(--fg-muted);
+}
+
+.dialog-subtitle strong {
+  color: var(--cyan);
+  font-family: var(--font-mono);
+}
+
+.dialog-body {
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.dialog-footer {
+  padding: 12px 20px 16px;
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
 }

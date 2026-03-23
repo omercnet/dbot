@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from starlette.requests import Request
-from starlette.responses import HTMLResponse, JSONResponse
+from starlette.responses import JSONResponse
 from starlette.routing import Route, Router
 
 logger = logging.getLogger("dbot.config.api")
@@ -376,14 +376,6 @@ async def delete_provider(request: Request) -> JSONResponse:
     return JSONResponse({"status": "ok", "provider": provider, "deleted": True})
 
 
-async def settings_page(request: Request) -> HTMLResponse:
-    """GET /settings — serve the settings HTML page."""
-    html_path = Path(__file__).parent / "settings.html"
-    if html_path.exists():
-        return HTMLResponse(html_path.read_text(encoding="utf-8"))
-    return HTMLResponse("<h1>Settings page not found</h1>", status_code=404)
-
-
 async def reload_app(request: Request) -> JSONResponse:
     """POST /api/reload — rebuild the chat UI with current config."""
     if _starlette_app is None:
@@ -479,6 +471,5 @@ def make_settings_router() -> Router:
             Route("/api/packs/{pack}/readme", get_pack_readme, methods=["GET"]),
             Route("/api/packs", list_packs, methods=["GET"]),
             Route("/api/settings/schema", get_schema, methods=["GET"]),
-            Route("/settings", settings_page, methods=["GET"]),
         ]
     )

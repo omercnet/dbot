@@ -1,5 +1,5 @@
 import type { UIMessage } from "ai";
-import { ToolCallBadge } from "./ToolCallBadge";
+import { ToolCallCard } from "./ToolCallCard";
 
 export function MessageBubble({
   message,
@@ -23,18 +23,34 @@ export function MessageBubble({
 
           if (part.type === "dynamic-tool") {
             return (
-              <ToolCallBadge key={part.toolCallId} toolName={part.toolName} state={part.state} />
+              <ToolCallCard
+                key={part.toolCallId}
+                toolName={part.toolName}
+                state={part.state}
+                input={"input" in part ? part.input : undefined}
+                output={"output" in part ? part.output : undefined}
+                errorText={"errorText" in part ? (part.errorText as string) : undefined}
+              />
             );
           }
 
-          // Tool parts with typed names (tool-{name}) also have the same shape
           if (typeof part.type === "string" && part.type.startsWith("tool-")) {
-            const toolPart = part as { toolCallId: string; toolName?: string; state: string };
+            const p = part as {
+              toolCallId: string;
+              toolName?: string;
+              state: string;
+              input?: unknown;
+              output?: unknown;
+              errorText?: string;
+            };
             return (
-              <ToolCallBadge
-                key={toolPart.toolCallId}
-                toolName={toolPart.toolName ?? part.type.slice(5)}
-                state={toolPart.state}
+              <ToolCallCard
+                key={p.toolCallId}
+                toolName={p.toolName ?? part.type.slice(5)}
+                state={p.state}
+                input={p.input}
+                output={p.output}
+                errorText={p.errorText}
               />
             );
           }

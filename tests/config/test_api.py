@@ -127,12 +127,11 @@ class TestPacksRoute:
         assert packs[0]["commands"] == 1
 
 
-class TestSettingsPage:
-    def test_returns_html(self, config_db: ConfigDB) -> None:
+class TestSettingsPageRemoved:
+    def test_legacy_settings_route_removed(self, config_db: ConfigDB) -> None:
         client = _make_test_app(config_db)
         resp = client.get("/settings")
-        assert resp.status_code == 200
-        assert "text/html" in resp.headers["content-type"]
+        assert resp.status_code in (404, 405)
 
 
 class TestHealthRoute:
