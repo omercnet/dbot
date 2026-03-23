@@ -13,10 +13,20 @@ class GeneralConfig(BaseModel):
     content_root: str = ""  # empty = auto-detect from package root
 
 
-class ProviderConfig(BaseModel):
-    """Stored per-provider configuration (non-secret fields)."""
+class ProviderConfig(BaseModel, extra="allow"):
+    """Stored per-provider configuration (non-secret fields). Extra fields allowed for provider-specific settings."""
 
     base_url: str = ""
+    api_version: str = ""
+
+
+class ExtraField(BaseModel):
+    """Additional config field for a provider (shown in UI)."""
+
+    label: str
+    placeholder: str = ""
+    env_var: str = ""  # internal: env var to set
+    required: bool = False
 
 
 class ProviderSpec(BaseModel):
@@ -28,6 +38,7 @@ class ProviderSpec(BaseModel):
     api_key_label: str = "API Key"
     base_url_label: str = "Base URL"
     base_url_placeholder: str = "https://..."
+    extra_fields: list[ExtraField] = Field(default_factory=list)
     # Internal: env var mapping (never sent to UI)
     _env_var: str = ""
     _base_url_env: str = ""
@@ -43,6 +54,7 @@ def _spec(
     base_url_label: str = "Base URL",
     base_url_placeholder: str = "https://...",
     base_url_env: str = "",
+    extra_fields: list[ExtraField] | None = None,
 ) -> ProviderSpec:
     s = ProviderSpec(
         description=description,
@@ -51,6 +63,7 @@ def _spec(
         api_key_label=api_key_label,
         base_url_label=base_url_label,
         base_url_placeholder=base_url_placeholder,
+        extra_fields=extra_fields or [],
     )
     s._env_var = env_var
     s._base_url_env = base_url_env
@@ -85,6 +98,14 @@ KNOWN_PROVIDERS: dict[str, ProviderSpec] = {
         base_url_label="Azure Endpoint",
         base_url_placeholder="https://YOUR-RESOURCE.openai.azure.com",
         base_url_env="AZURE_OPENAI_ENDPOINT",
+        extra_fields=[
+            ExtraField(
+                label="API Version",
+                placeholder="2024-12-01-preview",
+                env_var="OPENAI_API_VERSION",
+                required=True,
+            ),
+        ],
     ),
     "ollama": _spec(
         "Ollama (local models)",

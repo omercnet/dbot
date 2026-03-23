@@ -7,6 +7,7 @@ type ProviderSpec = {
   api_key_label: string;
   base_url_label: string;
   base_url_placeholder: string;
+  extra_fields: { label: string; placeholder: string; required: boolean }[];
   description: string;
   configured: boolean;
 };
@@ -73,19 +74,23 @@ function ProviderForm({
   name: string;
   spec: ProviderSpec;
   existing?: ConfiguredProvider;
-  onSave: (name: string, data: { api_key?: string; base_url?: string }) => Promise<boolean>;
+  onSave: (name: string, data: Record<string, string>) => Promise<boolean>;
   onDelete?: (name: string) => Promise<void>;
   onCancel?: () => void;
 }) {
   const [apiKey, setApiKey] = useState("");
   const [baseUrl, setBaseUrl] = useState(existing?.base_url ?? "");
+  const [extraValues, setExtraValues] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
 
   async function handleSave() {
     setSaving(true);
-    const payload: { api_key?: string; base_url?: string } = {};
+    const payload: Record<string, string> = {};
     if (apiKey) payload.api_key = apiKey;
     if (spec.needs_base_url || baseUrl) payload.base_url = baseUrl;
+    for (const [k, v] of Object.entries(extraValues)) {
+      if (v) payload[k] = v;
+    }
     const ok = await onSave(name, payload);
     setSaving(false);
     if (ok && onCancel) onCancel();
@@ -126,6 +131,24 @@ function ProviderForm({
             />
           </label>
         )}
+        {spec.extra_fields.map((field) => {
+          const key = field.label.toLowerCase().replace(/ /g, "_");
+          return (
+            <label key={key} className="schema-field">
+              <span>
+                {field.label}
+                {field.required ? " *" : ""}
+              </span>
+              <input
+                type="text"
+                placeholder={field.placeholder}
+                value={extraValues[key] ?? ""}
+                onChange={(e) => setExtraValues((prev) => ({ ...prev, [key]: e.target.value }))}
+                className="input"
+              />
+            </label>
+          );
+        })}
         <div className="provider-actions">
           <button type="button" className="btn btn-primary" onClick={handleSave} disabled={saving}>
             {saving ? "Saving…" : "Save"}
@@ -156,7 +179,7 @@ function ConfiguredProviderRow({
   name: string;
   provider: ConfiguredProvider;
   spec?: ProviderSpec;
-  onSave: (name: string, data: { api_key?: string; base_url?: string }) => Promise<boolean>;
+  onSave: (name: string, data: Record<string, string>) => Promise<boolean>;
   onDelete: (name: string) => Promise<void>;
 }) {
   const [editing, setEditing] = useState(false);

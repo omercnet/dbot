@@ -270,6 +270,7 @@ async def available_providers(request: Request) -> JSONResponse:
             "api_key_label": spec.api_key_label,
             "base_url_label": spec.base_url_label,
             "base_url_placeholder": spec.base_url_placeholder,
+            "extra_fields": [f.model_dump(exclude={"env_var"}) for f in spec.extra_fields],
             "configured": name in stored_keys or bool(providers_config.get(name, {}).get("base_url")),
         }
     return JSONResponse(result)
@@ -299,12 +300,21 @@ async def put_provider(request: Request) -> JSONResponse:
             base_url_env = (spec._base_url_env if spec else "") or f"{provider.upper()}_BASE_URL"
             os.environ[base_url_env] = base_url
 
-        # Store base_url + env_var in LLM config providers section
+        # Handle extra fields (e.g., Azure api_version)
+        extra_data: dict[str, str] = {}
+        if spec:
+            for field in spec.extra_fields:
+                val = body.get(field.label.lower().replace(" ", "_"), "")
+                if val:
+                    extra_data[field.label.lower().replace(" ", "_")] = val
+                    if field.env_var:
+                        os.environ[field.env_var] = val
+
         from dbot.config.models import ProviderConfig
 
         llm_config = db.get_section("llm")
         providers = llm_config.get("providers", {})
-        providers[provider] = ProviderConfig(base_url=base_url).model_dump()
+        providers[provider] = ProviderConfig(base_url=base_url, **extra_data).model_dump()
         llm_config["providers"] = providers
         db.set_section("llm", llm_config)
 
