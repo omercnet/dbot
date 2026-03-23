@@ -63,6 +63,24 @@ function useSchemas() {
   return { schemas, values, setValues, loading };
 }
 
+function useConfiguredModels() {
+  const [models, setModels] = useState<Record<string, string>>({});
+  const [loading, setLoading] = useState(true);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    const r = await fetch("/api/settings/models");
+    if (r.ok) setModels(await r.json());
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
+
+  return { models, loading, refresh };
+}
+
 function ProviderForm({
   name,
   spec,
@@ -399,10 +417,137 @@ function SchemaSection({
   );
 }
 
-type Tab = "providers" | string;
+function ModelsTab({
+  models,
+  providers,
+  onAdd,
+  onDelete,
+}: {
+  models: Record<string, string>;
+  providers: string[];
+  onAdd: (name: string, provider: string, model: string) => Promise<void>;
+  onDelete: (name: string) => Promise<void>;
+}) {
+  const [adding, setAdding] = useState(false);
+  const [displayName, setDisplayName] = useState("");
+  const [provider, setProvider] = useState(providers[0] ?? "");
+  const [modelName, setModelName] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  async function handleAdd() {
+    if (!displayName.trim() || !provider || !modelName.trim()) return;
+    setSaving(true);
+    await onAdd(displayName.trim(), provider, modelName.trim());
+    setSaving(false);
+    setDisplayName("");
+    setModelName("");
+    setAdding(false);
+  }
+
+  const entries = Object.entries(models);
+
+  return (
+    <section className="settings-section">
+      <p className="settings-hint">
+        Add models as provider:model combos. The display name appears in the chat dropdown.
+      </p>
+
+      {entries.length > 0 && (
+        <div className="provider-list">
+          {entries.map(([name, modelId]) => (
+            <div key={name} className="provider-row">
+              <div className="provider-info">
+                <span className="provider-name">{name}</span>
+                <span className="provider-url">{modelId}</span>
+              </div>
+              <div className="provider-actions">
+                <button
+                  type="button"
+                  className="btn btn-sm btn-danger"
+                  onClick={() => onDelete(name)}
+                >
+                  Remove
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {adding ? (
+        <div className="provider-row editing" style={{ marginTop: 12 }}>
+          <div className="provider-form">
+            <label className="schema-field">
+              <span>Display Name</span>
+              <input
+                type="text"
+                className="input"
+                placeholder="e.g. GPT-4o (Azure)"
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+              />
+            </label>
+            <label className="schema-field">
+              <span>Provider</span>
+              <select
+                className="input"
+                value={provider}
+                onChange={(e) => setProvider(e.target.value)}
+              >
+                {providers.map((p) => (
+                  <option key={p} value={p}>
+                    {p}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="schema-field">
+              <span>Model Name</span>
+              <input
+                type="text"
+                className="input"
+                placeholder="e.g. gpt-4o, claude-sonnet-4-5, my-deployment"
+                value={modelName}
+                onChange={(e) => setModelName(e.target.value)}
+              />
+            </label>
+            <div className="provider-actions">
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={handleAdd}
+                disabled={saving}
+              >
+                {saving ? "Adding\u2026" : "Add Model"}
+              </button>
+              <button type="button" className="btn btn-sm" onClick={() => setAdding(false)}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="settings-actions">
+          <button type="button" className="btn btn-primary" onClick={() => setAdding(true)}>
+            + Add Model
+          </button>
+        </div>
+      )}
+
+      {entries.length === 0 && !adding && (
+        <div className="empty-state" style={{ padding: "40px 0" }}>
+          <p>No models configured. Add one to start chatting.</p>
+        </div>
+      )}
+    </section>
+  );
+}
+
+type Tab = "providers" | "models" | string;
 
 export function SettingsPage({ onBack }: { onBack: () => void }) {
   const { configured, available, loading: providersLoading, refresh } = useProviders();
+  const { models, loading: modelsLoading, refresh: refreshModels } = useConfiguredModels();
   const { schemas, values, setValues, loading: schemasLoading } = useSchemas();
   const [toast, setToast] = useState<Toast>(null);
   const [reloading, setReloading] = useState(false);
@@ -468,10 +613,39 @@ export function SettingsPage({ onBack }: { onBack: () => void }) {
   }
 
   const configuredCount = Object.keys(configured).length;
+  const modelCount = Object.keys(models).length;
   const unconfigured = Object.entries(available).filter(([name]) => !configured[name]);
+  const providerNames = Object.keys(available);
+
+  async function addModel(displayName: string, provider: string, model: string) {
+    const r = await fetch("/api/settings/models", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: displayName, provider, model }),
+    });
+    if (r.ok) {
+      showToast(`${displayName} added`, true);
+      await refreshModels();
+    } else {
+      showToast("Failed to add model", false);
+    }
+  }
+
+  async function deleteModel(displayName: string) {
+    const r = await fetch(`/api/settings/models/${encodeURIComponent(displayName)}`, {
+      method: "DELETE",
+    });
+    if (r.ok) {
+      showToast(`${displayName} removed`, true);
+      await refreshModels();
+    } else {
+      showToast("Failed to remove model", false);
+    }
+  }
 
   const tabs: { id: Tab; label: string }[] = [
     { id: "providers", label: `Providers (${configuredCount})` },
+    { id: "models", label: `Models (${modelCount})` },
     ...Object.entries(schemas).map(([id, s]) => ({ id, label: s.title ?? id })),
   ];
 
@@ -507,7 +681,7 @@ export function SettingsPage({ onBack }: { onBack: () => void }) {
           ))}
         </nav>
 
-        {providersLoading || schemasLoading ? (
+        {providersLoading || modelsLoading || schemasLoading ? (
           <div className="settings-loading">Loading…</div>
         ) : activeTab === "providers" ? (
           <section className="settings-section">
@@ -564,6 +738,13 @@ export function SettingsPage({ onBack }: { onBack: () => void }) {
               </div>
             )}
           </section>
+        ) : activeTab === "models" ? (
+          <ModelsTab
+            models={models}
+            providers={providerNames}
+            onAdd={addModel}
+            onDelete={deleteModel}
+          />
         ) : schemas[activeTab] ? (
           <SchemaSection
             name={activeTab}

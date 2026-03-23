@@ -43,6 +43,43 @@ async def get_schema(request: Request) -> JSONResponse:
     return JSONResponse(schemas)
 
 
+async def list_models(request: Request) -> JSONResponse:
+    """GET /api/settings/models — list user-configured models."""
+    db = _config_db
+    llm_config = db.get_section("llm")
+    return JSONResponse(llm_config.get("available_models", {}))
+
+
+async def put_model(request: Request) -> JSONResponse:
+    """PUT /api/settings/models — add or update a model. Body: {name, provider, model}"""
+    db = _config_db
+    body = await request.json()
+    display_name = body.get("name", "").strip()
+    provider = body.get("provider", "").strip()
+    model = body.get("model", "").strip()
+    if not display_name or not provider or not model:
+        return JSONResponse({"error": "name, provider, and model are required"}, status_code=400)
+    model_id = f"{provider}:{model}"
+    llm_config = db.get_section("llm")
+    models = llm_config.get("available_models", {})
+    models[display_name] = model_id
+    llm_config["available_models"] = models
+    db.set_section("llm", llm_config)
+    return JSONResponse({"status": "ok", "name": display_name, "model_id": model_id})
+
+
+async def delete_model(request: Request) -> JSONResponse:
+    """DELETE /api/settings/models/{name} — remove a model."""
+    display_name = request.path_params["name"]
+    db = _config_db
+    llm_config = db.get_section("llm")
+    models = llm_config.get("available_models", {})
+    models.pop(display_name, None)
+    llm_config["available_models"] = models
+    db.set_section("llm", llm_config)
+    return JSONResponse({"status": "ok", "deleted": display_name})
+
+
 async def get_section(request: Request) -> JSONResponse:
     """GET /api/settings/{section} — return one config section."""
     section = request.path_params["section"]
@@ -431,6 +468,9 @@ def make_settings_router() -> Router:
             Route("/api/settings/credentials/{pack}", put_credentials, methods=["PUT"]),
             Route("/api/settings/credentials/{pack}", delete_credentials, methods=["DELETE"]),
             Route("/api/settings/credentials", list_credentials, methods=["GET"]),
+            Route("/api/settings/models/{name}", delete_model, methods=["DELETE"]),
+            Route("/api/settings/models", list_models, methods=["GET"]),
+            Route("/api/settings/models", put_model, methods=["PUT"]),
             Route("/api/settings/health", settings_health, methods=["GET"]),
             Route("/api/settings/{section}", get_section, methods=["GET"]),
             Route("/api/settings/{section}", put_section, methods=["PUT"]),

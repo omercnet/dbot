@@ -141,22 +141,9 @@ def create_app(
     llm_config = config_db.get_section("llm")
     no_key_providers = {n for n, s in KNOWN_PROVIDERS.items() if not s.needs_api_key}
     configured_providers = set(config_db.get_all_provider_keys().keys()) | no_key_providers
-    # Default models for all known providers — filtered to configured ones below
-    default_models = {
-        "GPT-4o": "openai:gpt-4o",
-        "GPT-4o mini": "openai:gpt-4o-mini",
-        "Claude Sonnet": "anthropic:claude-sonnet-4-5",
-        "Claude Haiku": "anthropic:claude-haiku-4",
-        "Gemini 2.5 Pro": "google:gemini-2.5-pro",
-        "Gemini 2.5 Flash": "google:gemini-2.5-flash",
-        "Llama 3 70B (Groq)": "groq:llama-3.3-70b-versatile",
-        "Mistral Large": "mistral:mistral-large-latest",
-        "GPT-4o (Azure)": "azure:gpt-4o",
-        "GPT-4o mini (Azure)": "azure:gpt-4o-mini",
-    }
-    all_models = models or llm_config.get("available_models", {}) or default_models
+    user_models = models or llm_config.get("available_models", {})
     available_models = {
-        name: model_id for name, model_id in all_models.items() if model_id.split(":")[0] in configured_providers
+        name: model_id for name, model_id in user_models.items() if model_id.split(":")[0] in configured_providers
     }
 
     logger = logging.getLogger("dbot.web")
