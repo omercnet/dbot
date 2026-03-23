@@ -73,6 +73,7 @@ typecheck = "mypy dbot/"
 build-ui = "npm run --prefix dbot/ui build"
 test-ui = "npm run --prefix dbot/ui test"
 dev = "npm run --prefix dbot/ui build && python -m dbot.agent.cli web"
+dev-api = "python -m dbot.agent.cli web"
 check = [
     "lint",
     "lint-ui",

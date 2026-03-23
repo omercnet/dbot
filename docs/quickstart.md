@@ -179,13 +179,18 @@ hatch run hooks          # install pre-commit hooks
 To run the React dev server with HMR (proxies API calls to the backend at :7932):
 
 ```bash
-# Terminal 1 -- start the backend
-hatch run dbot-web
+# Terminal 1 — start the Python API server
+hatch run dev-api
 
-# Terminal 2 -- start the frontend dev server
+# Terminal 2 — start the Vite dev server with HMR
 cd dbot/ui && npm run dev
-# -> http://localhost:5173  (hot reload)
+# → http://localhost:5173  (hot reload, proxies /api/* to :7932)
 ```
+
+Or for a production-like run (static build + single server):
+
+```bash
+hatch run dev    # builds UI, starts at http://127.0.0.1:7932
 
 For production, `hatch run build-ui` compiles the SPA into `dbot/ui/dist/`,
 which the Starlette server then serves as static files.
