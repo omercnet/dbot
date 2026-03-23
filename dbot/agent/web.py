@@ -75,13 +75,13 @@ def _bootstrap_deps(
     for provider, api_key in provider_keys.items():
         prov_cfg = providers_config.get(provider, {})
         spec = KNOWN_PROVIDERS.get(provider)
-        env_var = prov_cfg.get("env_var") or (spec.env_var if spec else "")
+        env_var = spec._env_var if spec else ""
         if env_var and env_var not in os.environ:
             os.environ[env_var] = api_key
 
         base_url = prov_cfg.get("base_url", "")
         if base_url:
-            base_env = (spec.base_url_env if spec else "") or f"{provider.upper()}_BASE_URL"
+            base_env = (spec._base_url_env if spec else "") or f"{provider.upper()}_BASE_URL"
             if base_env not in os.environ:
                 os.environ[base_env] = base_url
 

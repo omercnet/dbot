@@ -164,16 +164,10 @@ class TestProviderEnvInjection:
         )
         assert os.environ.get("OPENAI_BASE_URL") == "https://proxy.com/v1"
 
-    def test_custom_env_var_name(self, provider_app: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.delenv("MY_CUSTOM_KEY", raising=False)
-        provider_app.put(
-            "/api/settings/providers/openai",
-            json={
-                "api_key": "sk-custom",
-                "env_var": "MY_CUSTOM_KEY",
-            },
-        )
-        assert os.environ.get("MY_CUSTOM_KEY") == "sk-custom"
+    def test_provider_uses_builtin_env_var(self, provider_app: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        provider_app.put("/api/settings/providers/openai", json={"api_key": "sk-builtin"})
+        assert os.environ.get("OPENAI_API_KEY") == "sk-builtin"
 
     def test_existing_env_not_overwritten(self, provider_app: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
         """If env var already set (e.g., from shell), don't overwrite on startup."""
@@ -185,24 +179,27 @@ class TestProviderEnvInjection:
         assert os.environ.get("OPENAI_API_KEY") == "sk-from-ui"
 
 
-class TestProviderEnvVar:
-    def test_known_provider_default_env_var(self, provider_app: TestClient) -> None:
+class TestProviderSpecs:
+    def test_available_has_all_providers(self, provider_app: TestClient) -> None:
         r = provider_app.get("/api/settings/providers/available")
-        assert r.json()["openai"]["env_var"] == "OPENAI_API_KEY"
-        assert r.json()["anthropic"]["env_var"] == "ANTHROPIC_API_KEY"
-        assert r.json()["google"]["env_var"] == "GOOGLE_API_KEY"
+        data = r.json()
+        assert data["openai"]["needs_api_key"] is True
+        assert data["anthropic"]["needs_api_key"] is True
+        assert data["azure"]["needs_base_url"] is True
+        assert data["ollama"]["needs_api_key"] is False
 
-    def test_custom_env_var_persisted(self, provider_app: TestClient) -> None:
-        provider_app.put(
-            "/api/settings/providers/openai",
-            json={"api_key": "sk-test", "env_var": "CUSTOM_OPENAI_KEY"},
-        )
-        r = provider_app.get("/api/settings/providers")
-        assert r.json()["openai"]["env_var"] == "CUSTOM_OPENAI_KEY"
-
-    def test_ollama_no_env_var(self, provider_app: TestClient) -> None:
+    def test_available_has_labels(self, provider_app: TestClient) -> None:
         r = provider_app.get("/api/settings/providers/available")
-        assert r.json()["ollama"]["env_var"] == ""
+        data = r.json()
+        assert data["azure"]["base_url_label"] == "Azure Endpoint"
+        assert data["ollama"]["base_url_label"] == "Ollama Server URL"
+
+    def test_no_env_vars_in_response(self, provider_app: TestClient) -> None:
+        r = provider_app.get("/api/settings/providers/available")
+        data = r.json()
+        for spec in data.values():
+            assert "env_var" not in spec
+            assert "_env_var" not in spec
 
 
 class TestProviderDB:
@@ -248,7 +245,6 @@ class TestCustomProvider:
             json={
                 "api_key": "azure-key-123",
                 "base_url": "https://myinstance.openai.azure.com",
-                "env_var": "AZURE_OPENAI_KEY",
             },
         )
         r = provider_app.get("/api/settings/providers")
@@ -256,7 +252,6 @@ class TestCustomProvider:
         assert az is not None
         assert az["has_key"] is True
         assert az["base_url"] == "https://myinstance.openai.azure.com"
-        assert az["env_var"] == "AZURE_OPENAI_KEY"
 
     def test_delete_custom_provider(self, provider_app: TestClient) -> None:
         provider_app.put("/api/settings/providers/custom", json={"api_key": "k"})

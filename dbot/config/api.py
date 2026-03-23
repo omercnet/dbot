@@ -238,7 +238,6 @@ async def list_providers(request: Request) -> JSONResponse:
         spec = KNOWN_PROVIDERS.get(provider)
         result[provider] = {
             "has_key": True,
-            "env_var": providers_config.get(provider, {}).get("env_var", spec.env_var if spec else ""),
             "base_url": providers_config.get(provider, {}).get("base_url", ""),
             "description": spec.description if spec else "",
         }
@@ -247,7 +246,6 @@ async def list_providers(request: Request) -> JSONResponse:
             spec = KNOWN_PROVIDERS.get(provider)
             result[provider] = {
                 "has_key": provider in stored_keys,
-                "env_var": cfg.get("env_var", spec.env_var if spec else ""),
                 "base_url": cfg.get("base_url", ""),
                 "description": spec.description if spec else "",
             }
@@ -255,7 +253,7 @@ async def list_providers(request: Request) -> JSONResponse:
 
 
 async def available_providers(request: Request) -> JSONResponse:
-    """GET /api/settings/providers/available — all known providers with specs."""
+    """GET /api/settings/providers/available — all known providers with UI-facing specs."""
     from dbot.config.models import KNOWN_PROVIDERS
 
     db = _config_db
@@ -266,7 +264,12 @@ async def available_providers(request: Request) -> JSONResponse:
     result = {}
     for name, spec in KNOWN_PROVIDERS.items():
         result[name] = {
-            **spec.model_dump(),
+            "description": spec.description,
+            "needs_api_key": spec.needs_api_key,
+            "needs_base_url": spec.needs_base_url,
+            "api_key_label": spec.api_key_label,
+            "base_url_label": spec.base_url_label,
+            "base_url_placeholder": spec.base_url_placeholder,
             "configured": name in stored_keys or bool(providers_config.get(name, {}).get("base_url")),
         }
     return JSONResponse(result)
@@ -280,22 +283,20 @@ async def put_provider(request: Request) -> JSONResponse:
         body = await request.json()
         api_key = body.get("api_key")
         base_url = body.get("base_url", "")
-        env_var = body.get("env_var", "")
-
         import os
 
         from dbot.config.models import KNOWN_PROVIDERS
 
         spec = KNOWN_PROVIDERS.get(provider)
-        resolved_env = env_var or (spec.env_var if spec else "")
 
         if api_key:
             db.set_provider_key(provider, api_key)
-            if resolved_env:
-                os.environ[resolved_env] = api_key
+            env_var = spec._env_var if spec else ""
+            if env_var:
+                os.environ[env_var] = api_key
 
         if base_url:
-            base_url_env = (spec.base_url_env if spec else "") or f"{provider.upper()}_BASE_URL"
+            base_url_env = (spec._base_url_env if spec else "") or f"{provider.upper()}_BASE_URL"
             os.environ[base_url_env] = base_url
 
         # Store base_url + env_var in LLM config providers section
@@ -303,7 +304,7 @@ async def put_provider(request: Request) -> JSONResponse:
 
         llm_config = db.get_section("llm")
         providers = llm_config.get("providers", {})
-        providers[provider] = ProviderConfig(base_url=base_url, env_var=env_var).model_dump()
+        providers[provider] = ProviderConfig(base_url=base_url).model_dump()
         llm_config["providers"] = providers
         db.set_section("llm", llm_config)
 

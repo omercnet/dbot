@@ -14,55 +14,85 @@ class GeneralConfig(BaseModel):
 
 
 class ProviderConfig(BaseModel):
-    """Per-provider configuration (non-secret fields)."""
+    """Stored per-provider configuration (non-secret fields)."""
 
-    base_url: str = Field(default="", title="Base URL", description="Custom API endpoint (empty = provider default)")
-    env_var: str = Field(default="", title="API Key Env Var", description="Environment variable for the API key")
+    base_url: str = ""
 
 
 class ProviderSpec(BaseModel):
-    """Metadata for a known LLM provider."""
+    """Metadata for a known LLM provider — drives the settings UI."""
 
-    env_var: str = Field(title="Default API Key Env Var")
-    needs_base_url: bool = Field(default=False, title="Requires Base URL")
-    needs_api_key: bool = Field(default=True, title="Requires API Key")
-    base_url_env: str = Field(default="", title="Base URL Env Var")
-    description: str = Field(default="")
+    description: str
+    needs_api_key: bool = True
+    needs_base_url: bool = False
+    api_key_label: str = "API Key"
+    base_url_label: str = "Base URL"
+    base_url_placeholder: str = "https://..."
+    # Internal: env var mapping (never sent to UI)
+    _env_var: str = ""
+    _base_url_env: str = ""
+
+
+def _spec(
+    description: str,
+    *,
+    env_var: str = "",
+    needs_api_key: bool = True,
+    needs_base_url: bool = False,
+    api_key_label: str = "API Key",
+    base_url_label: str = "Base URL",
+    base_url_placeholder: str = "https://...",
+    base_url_env: str = "",
+) -> ProviderSpec:
+    s = ProviderSpec(
+        description=description,
+        needs_api_key=needs_api_key,
+        needs_base_url=needs_base_url,
+        api_key_label=api_key_label,
+        base_url_label=base_url_label,
+        base_url_placeholder=base_url_placeholder,
+    )
+    s._env_var = env_var
+    s._base_url_env = base_url_env
+    return s
 
 
 KNOWN_PROVIDERS: dict[str, ProviderSpec] = {
-    "openai": ProviderSpec(
+    "openai": _spec(
+        "OpenAI (GPT-4o, GPT-4o mini, o1, o3)",
         env_var="OPENAI_API_KEY",
-        description="OpenAI (GPT-4o, GPT-4o mini, o1, o3)",
     ),
-    "anthropic": ProviderSpec(
+    "anthropic": _spec(
+        "Anthropic (Claude 4 Sonnet, Opus, Haiku)",
         env_var="ANTHROPIC_API_KEY",
-        description="Anthropic (Claude 4 Sonnet, Opus, Haiku)",
     ),
-    "google": ProviderSpec(
+    "google": _spec(
+        "Google (Gemini 2.5 Pro, Flash)",
         env_var="GOOGLE_API_KEY",
-        description="Google (Gemini 2.5 Pro, Flash)",
     ),
-    "groq": ProviderSpec(
+    "groq": _spec(
+        "Groq (Llama, Mixtral \u2014 fast inference)",
         env_var="GROQ_API_KEY",
-        description="Groq (Llama, Mixtral — fast inference)",
     ),
-    "mistral": ProviderSpec(
+    "mistral": _spec(
+        "Mistral (Mistral Large, Codestral)",
         env_var="MISTRAL_API_KEY",
-        description="Mistral (Mistral Large, Codestral)",
     ),
-    "azure": ProviderSpec(
+    "azure": _spec(
+        "Azure OpenAI Service",
         env_var="AZURE_OPENAI_API_KEY",
         needs_base_url=True,
+        base_url_label="Azure Endpoint",
+        base_url_placeholder="https://YOUR-RESOURCE.openai.azure.com",
         base_url_env="AZURE_OPENAI_ENDPOINT",
-        description="Azure OpenAI Service (requires endpoint URL)",
     ),
-    "ollama": ProviderSpec(
-        env_var="",
+    "ollama": _spec(
+        "Ollama (local models)",
         needs_api_key=False,
         needs_base_url=True,
+        base_url_label="Ollama Server URL",
+        base_url_placeholder="http://localhost:11434",
         base_url_env="OLLAMA_BASE_URL",
-        description="Ollama (local models, no API key needed)",
     ),
 }
 

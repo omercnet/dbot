@@ -1,16 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 
-type ConfiguredProvider = {
-  has_key: boolean;
-  env_var: string;
-  base_url: string;
-  description: string;
-};
+type ConfiguredProvider = { has_key: boolean; base_url: string; description: string };
 type ProviderSpec = {
-  env_var: string;
   needs_base_url: boolean;
   needs_api_key: boolean;
-  base_url_env: string;
+  api_key_label: string;
+  base_url_label: string;
+  base_url_placeholder: string;
   description: string;
   configured: boolean;
 };
@@ -103,26 +99,32 @@ function ProviderForm({
       </div>
       <div className="provider-form">
         {spec.needs_api_key && (
-          <input
-            type="password"
-            placeholder={
-              existing?.has_key ? "••••••• (leave blank to keep)" : `API key (${spec.env_var})`
-            }
-            value={apiKey}
-            onChange={(e) => setApiKey(e.target.value)}
-            className="input"
-          />
+          <label className="schema-field">
+            <span>{spec.api_key_label}</span>
+            <input
+              type="password"
+              placeholder={
+                existing?.has_key
+                  ? "\u2022\u2022\u2022\u2022\u2022\u2022\u2022 (leave blank to keep)"
+                  : spec.api_key_label
+              }
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              className="input"
+            />
+          </label>
         )}
         {(spec.needs_base_url || existing?.base_url) && (
-          <input
-            type="text"
-            placeholder={
-              spec.base_url_env ? `Endpoint URL (${spec.base_url_env})` : "Base URL (optional)"
-            }
-            value={baseUrl}
-            onChange={(e) => setBaseUrl(e.target.value)}
-            className="input"
-          />
+          <label className="schema-field">
+            <span>{spec.base_url_label}</span>
+            <input
+              type="text"
+              placeholder={spec.base_url_placeholder}
+              value={baseUrl}
+              onChange={(e) => setBaseUrl(e.target.value)}
+              className="input"
+            />
+          </label>
         )}
         <div className="provider-actions">
           <button type="button" className="btn btn-primary" onClick={handleSave} disabled={saving}>
