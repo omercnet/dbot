@@ -33,6 +33,16 @@ async def get_all_settings(request: Request) -> JSONResponse:
     return JSONResponse(sections)
 
 
+async def get_schema(request: Request) -> JSONResponse:
+    """GET /api/settings/schema — return JSON schemas for all config sections."""
+    from dbot.config.models import SECTION_MODELS
+
+    schemas = {}
+    for name, model_cls in SECTION_MODELS.items():
+        schemas[name] = model_cls.model_json_schema()
+    return JSONResponse(schemas)
+
+
 async def get_section(request: Request) -> JSONResponse:
     """GET /api/settings/{section} — return one config section."""
     section = request.path_params["section"]
@@ -396,6 +406,7 @@ def make_settings_router() -> Router:
             Route("/api/packs/{pack}/params", get_pack_params, methods=["GET"]),
             Route("/api/packs/{pack}/readme", get_pack_readme, methods=["GET"]),
             Route("/api/packs", list_packs, methods=["GET"]),
+            Route("/api/settings/schema", get_schema, methods=["GET"]),
             Route("/settings", settings_page, methods=["GET"]),
         ]
     )

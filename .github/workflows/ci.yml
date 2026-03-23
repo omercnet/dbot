@@ -103,8 +103,28 @@ jobs:
         run: npm run build
         working-directory: dbot/ui
 
-      - name: Run tests
-        run: hatch run pytest tests/ -v --ignore=tests/integrations
+      - name: Run Python tests
+        run: hatch run pytest tests/ -v
+
+  test-ui:
+    name: Test UI (vitest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: dbot/ui/package-lock.json
+
+      - name: Install
+        run: npm ci
+        working-directory: dbot/ui
+
+      - name: Run frontend tests
+        run: npm run test
+        working-directory: dbot/ui
 
   build:
     name: Build UI

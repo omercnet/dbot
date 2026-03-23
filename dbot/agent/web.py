@@ -132,16 +132,20 @@ def create_app(
         deps_type=IRDeps,
     )
 
-    # Get available models from DB config
     llm_config = config_db.get_section("llm")
-    available_models = models or llm_config.get(
-        "available_models",
-        {
+    configured_providers = set(config_db.get_all_provider_keys().keys()) | {"ollama"}
+    all_models = (
+        models
+        or llm_config.get("available_models", {})
+        or {
             "GPT-4o": "openai:gpt-4o",
             "GPT-4o mini": "openai:gpt-4o-mini",
             "Claude Sonnet": "anthropic:claude-sonnet-4-5",
-        },
+        }
     )
+    available_models = {
+        name: model_id for name, model_id in all_models.items() if model_id.split(":")[0] in configured_providers
+    }
 
     logger = logging.getLogger("dbot.web")
 
