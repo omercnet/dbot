@@ -1,5 +1,6 @@
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, type UIMessage } from "ai";
+import { useMemo } from "react";
 
 export type ChatStatus = "submitted" | "streaming" | "ready" | "error";
 
@@ -12,9 +13,16 @@ export type DbotChat = {
   stop: () => void;
 };
 
-const transport = new DefaultChatTransport({ api: "/api/chat" });
+export function useDbotChat(modelId?: string): DbotChat {
+  const transport = useMemo(
+    () =>
+      new DefaultChatTransport({
+        api: "/api/chat",
+        body: modelId ? { model: modelId } : undefined,
+      }),
+    [modelId],
+  );
 
-export function useDbotChat(): DbotChat {
   const { messages, sendMessage, status, error, setMessages, stop } = useChat({ transport });
   return { messages, sendMessage, status, error, setMessages, stop };
 }
