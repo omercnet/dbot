@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock
 import pytest
 from starlette.applications import Starlette
 from starlette.requests import Request
-from starlette.responses import FileResponse
+from starlette.responses import FileResponse, JSONResponse, Response
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 from starlette.testclient import TestClient
@@ -61,11 +61,16 @@ def _build_spa_app(ui_dist: Path, config_db: ConfigDB) -> Starlette:
 
         spa_index = str(ui_dist / "index.html")
 
-        async def spa_fallback(request: Request) -> FileResponse:
+        async def spa_fallback(request: Request) -> Response:
+            if request.url.path.startswith("/api/"):
+                return JSONResponse({"error": "Not found"}, status_code=404)
+            if request.method != "GET":
+                return Response(status_code=405)
             return FileResponse(spa_index)
 
-        app.routes.append(Route("/{path:path}", spa_fallback, methods=["GET"]))
-        app.routes.append(Route("/", spa_fallback, methods=["GET"]))
+        all_methods = ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"]
+        app.routes.append(Route("/{path:path}", spa_fallback, methods=all_methods))
+        app.routes.append(Route("/", spa_fallback, methods=all_methods))
 
     return app
 

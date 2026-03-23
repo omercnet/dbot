@@ -14,6 +14,7 @@ Or programmatically:
     uvicorn.run(app, host="127.0.0.1", port=7932)
 """
 
+import logging
 import os
 from collections.abc import Callable
 from pathlib import Path
@@ -21,7 +22,7 @@ from pathlib import Path
 from pydantic_ai import Agent
 from starlette.applications import Starlette
 from starlette.requests import Request
-from starlette.responses import FileResponse
+from starlette.responses import FileResponse, JSONResponse, Response
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
@@ -142,6 +143,8 @@ def create_app(
         },
     )
 
+    logger = logging.getLogger("dbot.web")
+
     # Create the PydanticAI web app (provides /api/chat + /api/configure + /api/health)
     # to_web() validates model providers — if no API keys, fall back to settings-only mode
     try:
@@ -153,7 +156,7 @@ def create_app(
         # Remove PydanticAI's HTML shell routes — we serve our own SPA
         starlette_app.routes[:] = [r for r in starlette_app.routes if getattr(r, "path", "") not in ("/", "/{id}")]
     except Exception:
-        # Fallback: plain Starlette app (settings work, chat won't until keys configured)
+        logger.warning("to_web() failed — chat disabled until API keys configured", exc_info=True)
         starlette_app = Starlette(routes=[])
 
     # Mount settings routes — inject state BEFORE adding routes
@@ -176,14 +179,20 @@ def create_app(
         if assets_dir.is_dir():
             starlette_app.routes.append(Mount("/assets", app=StaticFiles(directory=str(assets_dir)), name="spa-assets"))
 
-        # SPA catch-all: any non-API GET request serves index.html
+        # SPA catch-all: serves index.html for non-API GET requests
+        # API paths (/api/*) must NOT be caught here — they should 404 properly
         spa_index = str(ui_dist / "index.html")
 
-        async def spa_fallback(request: Request) -> FileResponse:
+        async def spa_fallback(request: Request) -> Response:
+            if request.url.path.startswith("/api/"):
+                return JSONResponse({"error": "Not found"}, status_code=404)
+            if request.method != "GET":
+                return Response(status_code=405)
             return FileResponse(spa_index)
 
-        starlette_app.routes.append(Route("/{path:path}", spa_fallback, methods=["GET"]))
-        starlette_app.routes.append(Route("/", spa_fallback, methods=["GET"]))
+        all_methods = ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"]
+        starlette_app.routes.append(Route("/{path:path}", spa_fallback, methods=all_methods))
+        starlette_app.routes.append(Route("/", spa_fallback, methods=all_methods))
     return starlette_app
 
 
