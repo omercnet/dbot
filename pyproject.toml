@@ -72,8 +72,8 @@ fmt-ui = "npm run --prefix dbot/ui lint:fix"
 typecheck = "mypy dbot/"
 build-ui = "npm run --prefix dbot/ui build"
 test-ui = "npm run --prefix dbot/ui test"
-dev = "npm run --prefix dbot/ui build && python -m dbot.agent.cli web"
-dev-api = "python -m dbot.agent.cli web"
+dev = "npm run --prefix dbot/ui build && dbot-web"
+dev-api = "dbot-web"
 check = [
     "lint",
     "lint-ui",
