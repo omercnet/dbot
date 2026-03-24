@@ -141,3 +141,51 @@ class TestHealthRoute:
         assert resp.status_code == 200
         data = resp.json()
         assert data["status"] == "ok"
+
+
+class TestChatRoutes:
+    def test_list_chats_empty(self, config_db: ConfigDB) -> None:
+        client = _make_test_app(config_db)
+        resp = client.get("/api/chats")
+        assert resp.status_code == 200
+        assert resp.json() == []
+
+    def test_put_get_and_list_chat(self, config_db: ConfigDB) -> None:
+        client = _make_test_app(config_db)
+        payload = {
+            "title": "SOC Session",
+            "messages": [{"id": "m1", "role": "user", "parts": [{"type": "text", "text": "hello"}]}],
+        }
+
+        put_resp = client.put("/api/chats/chat-123", json=payload)
+        assert put_resp.status_code == 200
+        assert put_resp.json()["status"] == "ok"
+
+        get_resp = client.get("/api/chats/chat-123")
+        assert get_resp.status_code == 200
+        get_data = get_resp.json()
+        assert get_data["id"] == "chat-123"
+        assert get_data["title"] == "SOC Session"
+        assert get_data["messages"] == payload["messages"]
+
+        list_resp = client.get("/api/chats")
+        assert list_resp.status_code == 200
+        list_data = list_resp.json()
+        assert len(list_data) == 1
+        assert list_data[0]["id"] == "chat-123"
+        assert list_data[0]["title"] == "SOC Session"
+        assert list_data[0]["message_count"] == 1
+
+    def test_get_chat_not_found(self, config_db: ConfigDB) -> None:
+        client = _make_test_app(config_db)
+        resp = client.get("/api/chats/missing")
+        assert resp.status_code == 404
+
+    def test_delete_chat(self, config_db: ConfigDB) -> None:
+        client = _make_test_app(config_db)
+        client.put("/api/chats/chat-delete", json={"title": "Delete me", "messages": []})
+        delete_resp = client.delete("/api/chats/chat-delete")
+        assert delete_resp.status_code == 200
+        assert delete_resp.json()["deleted"] is True
+        get_resp = client.get("/api/chats/chat-delete")
+        assert get_resp.status_code == 404

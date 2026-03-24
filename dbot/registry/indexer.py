@@ -161,6 +161,8 @@ def parse_integration_yaml(yml_path: Path) -> IntegrationDef | None:
 
 def _get_content_hash(content_root: Path) -> str | None:
     """Get git commit hash of the content directory for cache invalidation."""
+    if not (content_root / ".git").exists():
+        return None
     try:
         result = subprocess.run(
             ["git", "rev-parse", "HEAD"],

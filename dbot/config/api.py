@@ -440,6 +440,42 @@ async def reload_app(request: Request) -> JSONResponse:
         )
 
 
+async def list_chats(request: Request) -> JSONResponse:
+    db = _config_db
+    return JSONResponse(db.list_chats())
+
+
+async def get_chat(request: Request) -> JSONResponse:
+    chat_id = request.path_params["id"]
+    db = _config_db
+    chat = db.get_chat(chat_id)
+    if not chat:
+        return JSONResponse({"error": "Chat not found"}, status_code=404)
+    return JSONResponse(chat)
+
+
+async def put_chat(request: Request) -> JSONResponse:
+    chat_id = request.path_params["id"]
+    db = _config_db
+    try:
+        body = await request.json()
+        title_raw = body.get("title", "")
+        title = title_raw if isinstance(title_raw, str) else ""
+        messages_raw = body.get("messages", [])
+        messages = messages_raw if isinstance(messages_raw, list) else []
+        db.upsert_chat(chat_id, title, messages)
+        return JSONResponse({"status": "ok", "id": chat_id})
+    except Exception as e:
+        return JSONResponse({"status": "error", "detail": str(e)}, status_code=400)
+
+
+async def delete_chat(request: Request) -> JSONResponse:
+    chat_id = request.path_params["id"]
+    db = _config_db
+    db.delete_chat(chat_id)
+    return JSONResponse({"status": "ok", "deleted": True, "id": chat_id})
+
+
 def make_settings_router() -> Router:
     """Create the settings API router.
 
@@ -449,6 +485,10 @@ def make_settings_router() -> Router:
     return Router(
         routes=[
             Route("/api/reload", reload_app, methods=["POST"]),
+            Route("/api/chats/{id}", get_chat, methods=["GET"]),
+            Route("/api/chats/{id}", put_chat, methods=["PUT"]),
+            Route("/api/chats/{id}", delete_chat, methods=["DELETE"]),
+            Route("/api/chats", list_chats, methods=["GET"]),
             Route("/api/settings/providers/{provider}", put_provider, methods=["PUT"]),
             Route("/api/settings/providers/{provider}", delete_provider, methods=["DELETE"]),
             Route("/api/settings/providers/available", available_providers, methods=["GET"]),
