@@ -159,12 +159,29 @@ def build_toolset(config: GuardrailConfig) -> AbstractToolset:
         # Check credentials — if pack needs creds but none configured, return credentials_required
         if integration.credential_params and not deps.credential_store.has(integration.pack):
             logger.info("Credentials required for %s (pack: %s)", tool_name, integration.pack)
+            config_params = []
+            for p in integration.params:
+                if p.hidden or p.type in (8, 15, 17):
+                    continue
+                if p.is_credential or (p.required and p.type == 0 and "url" in p.name.lower()):
+                    param_info: dict[str, object] = {
+                        "name": p.name,
+                        "display": p.display or p.name,
+                        "type": p.type,
+                        "required": p.required,
+                    }
+                    if p.default:
+                        param_info["default"] = p.default
+                    if p.display_password:
+                        param_info["display_password"] = p.display_password
+                    config_params.append(param_info)
             return {
                 "status": "credentials_required",
                 "tool_name": tool_name,
                 "pack": integration.pack,
                 "error": f"Pack '{integration.pack}' requires credentials. Configure via /settings.",
                 "required_credentials": [p.name for p in integration.params if p.is_credential],
+                "config_params": config_params,
             }
 
         # Execute
