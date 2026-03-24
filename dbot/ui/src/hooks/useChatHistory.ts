@@ -32,31 +32,39 @@ export function useChatHistory(): ChatHistory {
   const [loading, setLoading] = useState(true);
 
   const fetchSessions = useCallback(async () => {
-    const r = await fetch("/api/chats");
-    if (!r.ok) return [];
-    const data: ApiChatSession[] = await r.json();
-    return data.map((s) => ({
-      id: s.id,
-      title: s.title,
-      createdAt: s.created_at,
-      messageCount: s.message_count,
-    }));
+    try {
+      const r = await fetch("/api/chats");
+      if (!r.ok) return [];
+      const data: ApiChatSession[] = await r.json();
+      return data.map((s) => ({
+        id: s.id,
+        title: s.title,
+        createdAt: s.created_at,
+        messageCount: s.message_count,
+      }));
+    } catch {
+      return [];
+    }
   }, []);
 
   const refresh = useCallback(async () => {
     setLoading(true);
-    const mapped = await fetchSessions();
-    setSessions(mapped);
-    setLoading(false);
-    return mapped;
+    try {
+      const mapped = await fetchSessions();
+      setSessions(mapped);
+      return mapped;
+    } finally {
+      setLoading(false);
+    }
   }, [fetchSessions]);
 
   useEffect(() => {
-    fetchSessions().then((mapped) => {
-      setSessions(mapped);
-      setActiveId((cur) => cur || (mapped.length > 0 ? mapped[0].id : ""));
-      setLoading(false);
-    });
+    fetchSessions()
+      .then((mapped) => {
+        setSessions(mapped);
+        setActiveId((cur) => cur || (mapped.length > 0 ? mapped[0].id : ""));
+      })
+      .finally(() => setLoading(false));
   }, []); // biome-ignore lint/correctness/useExhaustiveDependencies: only fetch on mount
 
   const createSession = useCallback((): string => {

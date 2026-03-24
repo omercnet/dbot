@@ -282,10 +282,16 @@ function SchemaField({
           type="number"
           className="input"
           step={type === "number" ? "0.1" : "1"}
-          value={value as number}
-          onChange={(e) =>
-            onChange(type === "integer" ? parseInt(e.target.value, 10) : parseFloat(e.target.value))
-          }
+          value={typeof value === "number" ? value : ""}
+          onChange={(e) => {
+            const v = e.target.value;
+            if (v === "") {
+              onChange(undefined);
+              return;
+            }
+            const n = type === "integer" ? parseInt(v, 10) : parseFloat(v);
+            if (!Number.isNaN(n)) onChange(n);
+          }}
         />
       </label>
     );

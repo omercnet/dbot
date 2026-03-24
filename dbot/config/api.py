@@ -340,19 +340,23 @@ async def put_provider(request: Request) -> JSONResponse:
             if env_var:
                 os.environ[env_var] = api_key
 
+        base_url_env = (spec._base_url_env if spec else "") or f"{provider.upper()}_BASE_URL"
         if base_url:
-            base_url_env = (spec._base_url_env if spec else "") or f"{provider.upper()}_BASE_URL"
             os.environ[base_url_env] = base_url
+        elif base_url_env in os.environ:
+            del os.environ[base_url_env]
 
-        # Handle extra fields (e.g., Azure api_version)
         extra_data: dict[str, str] = {}
         if spec:
             for field in spec.extra_fields:
-                val = body.get(field.label.lower().replace(" ", "_"), "")
+                key = field.label.lower().replace(" ", "_")
+                val = body.get(key, "")
                 if val:
-                    extra_data[field.label.lower().replace(" ", "_")] = val
+                    extra_data[key] = val
                     if field.env_var:
                         os.environ[field.env_var] = val
+                elif field.env_var and field.env_var in os.environ:
+                    del os.environ[field.env_var]
 
         from dbot.config.models import ProviderConfig
 

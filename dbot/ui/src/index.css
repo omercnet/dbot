@@ -18,6 +18,10 @@
   --fg-muted: #8896aa;
   --fg-dim: #4a5568;
 
+  --text: var(--fg);
+  --text-muted: var(--fg-muted);
+  --border: rgba(255, 255, 255, 0.08);
+
   --radius: 8px;
   --radius-sm: 4px;
 
