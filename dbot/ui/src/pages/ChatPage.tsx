@@ -19,10 +19,8 @@ export function ChatPage({ onSettings }: { onSettings: () => void }) {
     saveSession,
     refresh,
   } = useChatHistory();
-  const { messages, sendMessage, status, error, stop, setMessages, regenerate } = useDbotChat(
-    selected,
-    activeId || undefined,
-  );
+  const { messages, sendMessage, status, error, stop, setMessages, regenerate } =
+    useDbotChat(selected);
   const [lastUserText, setLastUserText] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [showCredDialog, setShowCredDialog] = useState(false);
@@ -62,19 +60,23 @@ export function ChatPage({ onSettings }: { onSettings: () => void }) {
     }
   }, [activeId, createSession, loading, sessions.length]);
 
+  const prevActiveId = useRef(activeId);
   useEffect(() => {
-    if (!activeId) {
-      return;
+    if (!activeId) return;
+    if (prevActiveId.current !== activeId) {
+      setMessages([]);
+      prevActiveId.current = activeId;
     }
+    let stale = false;
     fetch(`/api/chats/${encodeURIComponent(activeId)}`)
-      .then((response) => (response.ok ? response.json() : null))
+      .then((r) => (r.ok ? r.json() : null))
       .then((chat: { messages?: typeof messages } | null) => {
-        if (chat?.messages) {
-          setMessages(chat.messages);
-        } else {
-          setMessages([]);
-        }
+        if (stale) return;
+        setMessages(chat?.messages?.length ? chat.messages : []);
       });
+    return () => {
+      stale = true;
+    };
   }, [activeId, setMessages]);
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);

@@ -15,7 +15,7 @@ export type DbotChat = {
   regenerate: ReturnType<typeof useChat>["regenerate"];
 };
 
-export function useDbotChat(modelId?: string, chatId?: string): DbotChat {
+export function useDbotChat(modelId?: string): DbotChat {
   const transport = useMemo(
     () =>
       new DefaultChatTransport({
@@ -26,7 +26,6 @@ export function useDbotChat(modelId?: string, chatId?: string): DbotChat {
   );
 
   const { id, messages, sendMessage, status, error, setMessages, stop, regenerate } = useChat({
-    id: chatId,
     transport,
   });
   return { id, messages, sendMessage, status, error, setMessages, stop, regenerate };
