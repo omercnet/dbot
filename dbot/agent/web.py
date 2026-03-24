@@ -129,23 +129,26 @@ def create_app(
     config = deps.guardrails
     toolset = build_toolset(config)
 
+    from dbot.config.models import KNOWN_PROVIDERS
+
+    llm_config = config_db.get_section("llm")
+    no_key_providers = {n for n, s in KNOWN_PROVIDERS.items() if not s.needs_api_key}
+    env_configured = {n for n, s in KNOWN_PROVIDERS.items() if s._env_var and os.environ.get(s._env_var)}
+    configured_providers = set(config_db.get_all_provider_keys().keys()) | no_key_providers | env_configured
+    user_models = models or llm_config.get("available_models", {})
+    available_models = {
+        name: model_id for name, model_id in user_models.items() if model_id.split(":")[0] in configured_providers
+    }
+
+    default_model = next(iter(available_models.values()), None)
     agent: Agent[IRDeps, str] = Agent(
+        default_model,
         instructions=CHAT_INSTRUCTIONS,
         toolsets=[toolset],  # type: ignore[list-item]
         output_type=str,
         deps_type=IRDeps,
         model_settings=ModelSettings(parallel_tool_calls=False),
     )
-
-    from dbot.config.models import KNOWN_PROVIDERS
-
-    llm_config = config_db.get_section("llm")
-    no_key_providers = {n for n, s in KNOWN_PROVIDERS.items() if not s.needs_api_key}
-    configured_providers = set(config_db.get_all_provider_keys().keys()) | no_key_providers
-    user_models = models or llm_config.get("available_models", {})
-    available_models = {
-        name: model_id for name, model_id in user_models.items() if model_id.split(":")[0] in configured_providers
-    }
 
     logger = logging.getLogger("dbot.web")
 
