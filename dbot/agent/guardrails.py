@@ -69,29 +69,20 @@ def build_toolset(config: GuardrailConfig) -> AbstractToolset:
 
     @toolset.tool  # type: ignore[arg-type]
     async def search_tools(ctx: RunContext[IRDeps], query: str, category: str | None = None) -> list[dict[str, Any]]:
-        """Search available security tools by keyword or category.
-
-        Returns matching tools with name, description, pack, and argument summary.
-        Call this first to discover what tools are available for investigation.
-
-        Categories include: Data Enrichment, Endpoint, SIEM, Identity,
-        Network, Vulnerability, Case Management, Cloud.
+        """Search for security tools matching a query. Only call when the user asks to investigate something specific.
 
         Args:
             query: Search keywords (e.g., "file hash reputation", "isolate host")
-            category: Optional category filter
+            category: Optional category filter (Data Enrichment, Endpoint, SIEM, etc.)
         """
         return ctx.deps.catalog.search(query, category, top_k=10)
 
     @toolset.tool  # type: ignore[arg-type]
     async def get_tool_schema(ctx: RunContext[IRDeps], tool_name: str) -> dict[str, Any]:
-        """Get the full argument and output schema for a specific tool.
-
-        Call this before invoke_tool to understand exactly what arguments
-        are required. Secret/credential arguments are hidden.
+        """Get argument schema for a tool. Call after search_tools to check required args before invoking.
 
         Args:
-            tool_name: Fully qualified tool name (e.g., "VirusTotal.vt-get-file")
+            tool_name: Fully qualified tool name from search_tools results
         """
         return ctx.deps.catalog.get_schema(tool_name)
 
@@ -102,18 +93,12 @@ def build_toolset(config: GuardrailConfig) -> AbstractToolset:
         args: dict[str, Any],
         reason: str,
     ) -> dict[str, Any]:
-        """Execute a security tool command.
-
-        IMPORTANT: Call get_tool_schema first to understand required arguments.
-        The reason field is REQUIRED — state why you are calling this tool.
-
-        Dangerous tools will return an approval_required status.
-        Blocked tools will return a blocked_by_policy status.
+        """Run a security tool. Requires get_tool_schema first to know the arguments.
 
         Args:
-            tool_name: Fully qualified tool name (e.g., "VirusTotal.vt-get-file")
-            args: Command arguments (non-secret only)
-            reason: Why you are calling this tool (audit trail)
+            tool_name: Fully qualified tool name from search_tools results
+            args: Command arguments matching the schema
+            reason: Why you are calling this tool (required for audit)
         """
         deps = ctx.deps
         guardrails = deps.guardrails
