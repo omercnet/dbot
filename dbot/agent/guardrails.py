@@ -184,8 +184,19 @@ def build_toolset(config: GuardrailConfig) -> AbstractToolset:
                 "config_params": config_params,
             }
 
-        # Execute
-        params = deps.credential_store.get(integration.pack)
+        # Execute — reconstruct nested param structure expected by integrations
+        raw_creds = deps.credential_store.get(integration.pack)
+        params: dict[str, object] = {}
+        for p in integration.params:
+            if p.type == 9:
+                params[p.name] = {
+                    "identifier": raw_creds.get(f"{p.name}_id", raw_creds.get(p.name, "")),
+                    "password": raw_creds.get(f"{p.name}_password", ""),
+                }
+            elif p.name in raw_creds:
+                params[p.name] = raw_creds[p.name]
+            elif p.default is not None:
+                params[p.name] = p.default
         start = time.monotonic()
 
         result = await deps.executor(
