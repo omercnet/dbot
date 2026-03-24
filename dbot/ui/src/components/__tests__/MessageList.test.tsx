@@ -15,7 +15,7 @@ describe("MessageList", () => {
   it("shows empty state when no messages", () => {
     render(<MessageList messages={[]} status="ready" />);
     expect(screen.getByText("dbot")).toBeTruthy();
-    expect(screen.getByText(/Ask me/)).toBeTruthy();
+    expect(screen.getByText(/security analyst/)).toBeTruthy();
   });
 
   it("renders all messages", () => {

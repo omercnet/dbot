@@ -18,7 +18,9 @@
     "@ai-sdk/react": "^3.0.136",
     "ai": "^6.0.134",
     "react": "^19.1.0",
-    "react-dom": "^19.1.0"
+    "react-dom": "^19.1.0",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.8",
