@@ -4,9 +4,11 @@ import type { ChatStatus } from "../hooks/useChat";
 export function ChatInput({
   onSend,
   status,
+  onStop,
 }: {
   onSend: (text: string) => void;
   status: ChatStatus;
+  onStop?: () => void;
 }) {
   const [input, setInput] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -49,25 +51,40 @@ export function ChatInput({
           placeholder={busy ? "Thinking\u2026" : "Describe the incident or ask a question\u2026"}
           disabled={busy}
         />
-        <button
-          type="button"
-          className="send-btn"
-          data-testid="send-button"
-          onClick={submit}
-          disabled={busy || !input.trim()}
-          aria-label="Send message"
-        >
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.5"
-            aria-hidden="true"
+        {busy && onStop ? (
+          <button
+            type="button"
+            className="send-btn stop-btn"
+            data-testid="stop-button"
+            onClick={onStop}
+            aria-label="Stop generation"
           >
-            <title>Send</title>
-            <path d="M5 12h14M12 5l7 7-7 7" />
-          </svg>
-        </button>
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <title>Stop</title>
+              <rect x="6" y="6" width="12" height="12" rx="2" />
+            </svg>
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="send-btn"
+            data-testid="send-button"
+            onClick={submit}
+            disabled={busy || !input.trim()}
+            aria-label="Send message"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              aria-hidden="true"
+            >
+              <title>Send</title>
+              <path d="M5 12h14M12 5l7 7-7 7" />
+            </svg>
+          </button>
+        )}
       </div>
     </div>
   );

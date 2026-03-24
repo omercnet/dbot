@@ -7,7 +7,7 @@ import { useModels } from "../hooks/useModels";
 
 export function ChatPage({ onSettings }: { onSettings: () => void }) {
   const { models, selected, setSelected } = useModels();
-  const { messages, sendMessage, status } = useDbotChat(selected);
+  const { messages, sendMessage, status, error, stop } = useDbotChat(selected);
   const [lastUserText, setLastUserText] = useState("");
 
   const credRequired = useMemo(
@@ -59,7 +59,22 @@ export function ChatPage({ onSettings }: { onSettings: () => void }) {
         </button>
       </header>
       <MessageList messages={messages} status={status} />
-      <ChatInput onSend={handleSend} status={status} />
+
+      {status === "error" && error && (
+        <div className="error-banner" data-testid="error-banner">
+          <span className="error-banner-icon">⚠</span>
+          <span className="error-banner-text">{error.message || "Something went wrong"}</span>
+          <button
+            type="button"
+            className="btn btn-sm"
+            onClick={() => lastUserText && sendMessage({ text: lastUserText })}
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
+      <ChatInput onSend={handleSend} status={status} onStop={stop} />
 
       {credRequired && (
         <CredentialDialog cred={credRequired} onSave={handleCredentialSave} onDismiss={() => {}} />

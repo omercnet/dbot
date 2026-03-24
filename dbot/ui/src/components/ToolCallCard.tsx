@@ -69,7 +69,7 @@ export function ToolCallCard({
   output?: unknown;
   errorText?: string;
 }) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(state === "output-error");
   const { icon, label, badge } = stateInfo(state);
   const hasDetails = input || output || errorText;
   const isDone = state === "output-available" || state === "output-error";
@@ -87,6 +87,11 @@ export function ToolCallCard({
         </span>
         <span className="tool-card-name">{toolName}</span>
         <span className="tool-card-status">{label}</span>
+        {state === "output-error" && !expanded && errorText && (
+          <span className="tool-card-error-hint" title={errorText}>
+            {errorText.length > 60 ? `${errorText.slice(0, 60)}…` : errorText}
+          </span>
+        )}
         {hasDetails && <span className="tool-card-chevron">{expanded ? "\u25B2" : "\u25BC"}</span>}
       </button>
 
