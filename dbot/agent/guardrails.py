@@ -69,29 +69,20 @@ def build_toolset(config: GuardrailConfig) -> AbstractToolset:
 
     @toolset.tool  # type: ignore[arg-type]
     async def search_tools(ctx: RunContext[IRDeps], query: str, category: str | None = None) -> list[dict[str, Any]]:
-        """Search available security tools by keyword or category.
-
-        Returns matching tools with name, description, pack, and argument summary.
-        Call this first to discover what tools are available for investigation.
-
-        Categories include: Data Enrichment, Endpoint, SIEM, Identity,
-        Network, Vulnerability, Case Management, Cloud.
+        """Search for security tools matching a query. Only call when the user asks to investigate something specific.
 
         Args:
             query: Search keywords (e.g., "file hash reputation", "isolate host")
-            category: Optional category filter
+            category: Optional category filter (Data Enrichment, Endpoint, SIEM, etc.)
         """
         return ctx.deps.catalog.search(query, category, top_k=10)
 
     @toolset.tool  # type: ignore[arg-type]
     async def get_tool_schema(ctx: RunContext[IRDeps], tool_name: str) -> dict[str, Any]:
-        """Get the full argument and output schema for a specific tool.
-
-        Call this before invoke_tool to understand exactly what arguments
-        are required. Secret/credential arguments are hidden.
+        """Get argument schema for a tool. Call after search_tools to check required args before invoking.
 
         Args:
-            tool_name: Fully qualified tool name (e.g., "VirusTotal.vt-get-file")
+            tool_name: Fully qualified tool name from search_tools results
         """
         return ctx.deps.catalog.get_schema(tool_name)
 
@@ -102,18 +93,12 @@ def build_toolset(config: GuardrailConfig) -> AbstractToolset:
         args: dict[str, Any],
         reason: str,
     ) -> dict[str, Any]:
-        """Execute a security tool command.
-
-        IMPORTANT: Call get_tool_schema first to understand required arguments.
-        The reason field is REQUIRED — state why you are calling this tool.
-
-        Dangerous tools will return an approval_required status.
-        Blocked tools will return a blocked_by_policy status.
+        """Run a security tool. Requires get_tool_schema first to know the arguments.
 
         Args:
-            tool_name: Fully qualified tool name (e.g., "VirusTotal.vt-get-file")
-            args: Command arguments (non-secret only)
-            reason: Why you are calling this tool (audit trail)
+            tool_name: Fully qualified tool name from search_tools results
+            args: Command arguments matching the schema
+            reason: Why you are calling this tool (required for audit)
         """
         deps = ctx.deps
         guardrails = deps.guardrails
@@ -174,16 +159,44 @@ def build_toolset(config: GuardrailConfig) -> AbstractToolset:
         # Check credentials — if pack needs creds but none configured, return credentials_required
         if integration.credential_params and not deps.credential_store.has(integration.pack):
             logger.info("Credentials required for %s (pack: %s)", tool_name, integration.pack)
+            config_params = []
+            for p in integration.params:
+                if p.hidden or p.type in (8, 15, 17):
+                    continue
+                if p.is_credential or p.required:
+                    param_info: dict[str, object] = {
+                        "name": p.name,
+                        "display": p.display or p.name,
+                        "type": p.type,
+                        "required": p.required,
+                    }
+                    if p.default:
+                        param_info["default"] = p.default
+                    if p.display_password:
+                        param_info["display_password"] = p.display_password
+                    config_params.append(param_info)
             return {
                 "status": "credentials_required",
                 "tool_name": tool_name,
                 "pack": integration.pack,
                 "error": f"Pack '{integration.pack}' requires credentials. Configure via /settings.",
                 "required_credentials": [p.name for p in integration.params if p.is_credential],
+                "config_params": config_params,
             }
 
-        # Execute
-        params = deps.credential_store.get(integration.pack)
+        # Execute — reconstruct nested param structure expected by integrations
+        raw_creds = deps.credential_store.get(integration.pack)
+        params: dict[str, object] = {}
+        for p in integration.params:
+            if p.type == 9:
+                params[p.name] = {
+                    "identifier": raw_creds.get(f"{p.name}_id", raw_creds.get(p.name, "")),
+                    "password": raw_creds.get(f"{p.name}_password", ""),
+                }
+            elif p.name in raw_creds:
+                params[p.name] = raw_creds[p.name]
+            elif p.default is not None:
+                params[p.name] = p.default
         start = time.monotonic()
 
         result = await deps.executor(
@@ -204,6 +217,47 @@ def build_toolset(config: GuardrailConfig) -> AbstractToolset:
             result=result,
             duration_ms=duration_ms,
         )
+
+        error_str = str(result.get("error", "")).lower()
+        results_str = str(result.get("results", "")).lower()
+        auth_keywords = (
+            "401",
+            "unauthorized",
+            "authentication failed",
+            "invalid credentials",
+            "access denied",
+            "forbidden",
+            "invalid api key",
+            "token expired",
+        )
+        is_auth_error = not result.get("success", False) and any(
+            kw in error_str or kw in results_str for kw in auth_keywords
+        )
+
+        if is_auth_error and integration.credential_params:
+            config_params = []
+            for p in integration.params:
+                if p.hidden or p.type in (8, 15, 17):
+                    continue
+                if p.is_credential or p.required:
+                    param_info = {
+                        "name": p.name,
+                        "display": p.display or p.name,
+                        "type": p.type,
+                        "required": p.required,
+                    }
+                    if p.default:
+                        param_info["default"] = p.default
+                    if p.display_password:
+                        param_info["display_password"] = p.display_password
+                    config_params.append(param_info)
+            return {
+                "status": "credentials_invalid",
+                "tool_name": tool_name,
+                "pack": integration.pack,
+                "error": result.get("error", "Authentication failed"),
+                "config_params": config_params,
+            }
 
         return {
             "tool_name": tool_name,

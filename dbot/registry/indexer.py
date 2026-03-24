@@ -122,10 +122,11 @@ def parse_integration_yaml(yml_path: Path) -> IntegrationDef | None:
         param = ParamDef(
             name=cfg.get("name", ""),
             display=str(cfg.get("display", cfg.get("displaypassword", ""))),
+            display_password=str(cfg.get("displaypassword", "")),
             type=cfg.get("type", 0),
             required=bool(cfg.get("required", False)),
             default=(str(cfg["defaultvalue"]) if cfg.get("defaultvalue") is not None else None),
-            is_credential=cfg.get("type") == 9,
+            is_credential=cfg.get("type") in (4, 9),
             hidden=bool(cfg.get("hidden", False) or cfg.get("hiddenusername", False)),
             options=_coerce_options(cfg.get("options")),
         )
@@ -161,6 +162,8 @@ def parse_integration_yaml(yml_path: Path) -> IntegrationDef | None:
 
 def _get_content_hash(content_root: Path) -> str | None:
     """Get git commit hash of the content directory for cache invalidation."""
+    if not (content_root / ".git").exists():
+        return None
     try:
         result = subprocess.run(
             ["git", "rev-parse", "HEAD"],

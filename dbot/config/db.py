@@ -35,6 +35,13 @@ CREATE TABLE IF NOT EXISTS migrations (
     name       TEXT PRIMARY KEY,
     applied_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+CREATE TABLE IF NOT EXISTS chats (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    messages TEXT NOT NULL DEFAULT '[]'
+);
 """
 
 
@@ -313,3 +320,69 @@ class ConfigDB:
     def close(self) -> None:
         """Close the database connection."""
         self._conn.close()
+
+    def list_chats(self) -> list[dict[str, Any]]:
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT id, title, created_at, messages FROM chats ORDER BY created_at DESC"
+            ).fetchall()
+
+        result: list[dict[str, Any]] = []
+        for row in rows:
+            try:
+                parsed = json.loads(row["messages"])
+                message_count = len(parsed) if isinstance(parsed, list) else 0
+            except Exception:
+                message_count = 0
+
+            result.append(
+                {
+                    "id": row["id"],
+                    "title": row["title"],
+                    "created_at": row["created_at"],
+                    "message_count": message_count,
+                }
+            )
+        return result
+
+    def get_chat(self, chat_id: str) -> dict[str, Any] | None:
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT id, title, created_at, messages FROM chats WHERE id = ?",
+                (chat_id,),
+            ).fetchone()
+
+        if not row:
+            return None
+
+        try:
+            messages = json.loads(row["messages"])
+            if not isinstance(messages, list):
+                messages = []
+        except Exception:
+            messages = []
+
+        return {
+            "id": row["id"],
+            "title": row["title"],
+            "created_at": row["created_at"],
+            "messages": messages,
+        }
+
+    def upsert_chat(self, chat_id: str, title: str, messages: list[Any]) -> None:
+        payload = json.dumps(messages)
+        with self._lock:
+            self._conn.execute(
+                """INSERT INTO chats (id, title, created_at, messages)
+                   VALUES (?, ?, datetime('now'), ?)
+                   ON CONFLICT(id) DO UPDATE SET
+                   title = excluded.title,
+                   messages = excluded.messages""",
+                (chat_id, title, payload),
+            )
+            self._conn.commit()
+
+    def delete_chat(self, chat_id: str) -> None:
+        with self._lock:
+            self._conn.execute("DELETE FROM chats WHERE id = ?", (chat_id,))
+            self._conn.commit()

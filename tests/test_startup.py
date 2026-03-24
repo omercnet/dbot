@@ -59,18 +59,6 @@ class TestFullBootstrap:
         app = create_app()
         assert app is not None
 
-    def test_web_app_settings_page(self) -> None:
-        """Settings page returns 200."""
-        from starlette.testclient import TestClient
-
-        from dbot.agent.web import create_app
-
-        app = create_app()
-        client = TestClient(app)
-        resp = client.get("/settings")
-        assert resp.status_code == 200
-        assert len(resp.text) > 1000
-
     def test_web_app_settings_api(self) -> None:
         """Settings API returns config."""
         from starlette.testclient import TestClient

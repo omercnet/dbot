@@ -13,21 +13,108 @@ class GeneralConfig(BaseModel):
     content_root: str = ""  # empty = auto-detect from package root
 
 
-class ProviderConfig(BaseModel):
-    """LLM provider configuration (non-secret fields only)."""
+class ProviderConfig(BaseModel, extra="allow"):
+    """Stored per-provider configuration (non-secret fields). Extra fields allowed for provider-specific settings."""
 
-    base_url: str = ""  # empty = use provider default
-    env_var: str = ""  # env var name for the API key (e.g., OPENAI_API_KEY)
+    base_url: str = ""
+    api_version: str = ""
 
 
-# Well-known providers with their default env var names
-KNOWN_PROVIDERS: dict[str, str] = {
-    "openai": "OPENAI_API_KEY",
-    "anthropic": "ANTHROPIC_API_KEY",
-    "google": "GOOGLE_API_KEY",
-    "groq": "GROQ_API_KEY",
-    "mistral": "MISTRAL_API_KEY",
-    "ollama": "",  # no key needed
+class ExtraField(BaseModel):
+    """Additional config field for a provider (shown in UI)."""
+
+    label: str
+    placeholder: str = ""
+    env_var: str = ""  # internal: env var to set
+    required: bool = False
+
+
+class ProviderSpec(BaseModel):
+    """Metadata for a known LLM provider — drives the settings UI."""
+
+    description: str
+    needs_api_key: bool = True
+    needs_base_url: bool = False
+    api_key_label: str = "API Key"
+    base_url_label: str = "Base URL"
+    base_url_placeholder: str = "https://..."
+    extra_fields: list[ExtraField] = Field(default_factory=list)
+    # Internal: env var mapping (never sent to UI)
+    _env_var: str = ""
+    _base_url_env: str = ""
+
+
+def _spec(
+    description: str,
+    *,
+    env_var: str = "",
+    needs_api_key: bool = True,
+    needs_base_url: bool = False,
+    api_key_label: str = "API Key",
+    base_url_label: str = "Base URL",
+    base_url_placeholder: str = "https://...",
+    base_url_env: str = "",
+    extra_fields: list[ExtraField] | None = None,
+) -> ProviderSpec:
+    s = ProviderSpec(
+        description=description,
+        needs_api_key=needs_api_key,
+        needs_base_url=needs_base_url,
+        api_key_label=api_key_label,
+        base_url_label=base_url_label,
+        base_url_placeholder=base_url_placeholder,
+        extra_fields=extra_fields or [],
+    )
+    s._env_var = env_var
+    s._base_url_env = base_url_env
+    return s
+
+
+KNOWN_PROVIDERS: dict[str, ProviderSpec] = {
+    "openai": _spec(
+        "OpenAI (GPT-4o, GPT-4o mini, o1, o3)",
+        env_var="OPENAI_API_KEY",
+    ),
+    "anthropic": _spec(
+        "Anthropic (Claude 4 Sonnet, Opus, Haiku)",
+        env_var="ANTHROPIC_API_KEY",
+    ),
+    "google": _spec(
+        "Google (Gemini 2.5 Pro, Flash)",
+        env_var="GOOGLE_API_KEY",
+    ),
+    "groq": _spec(
+        "Groq (Llama, Mixtral \u2014 fast inference)",
+        env_var="GROQ_API_KEY",
+    ),
+    "mistral": _spec(
+        "Mistral (Mistral Large, Codestral)",
+        env_var="MISTRAL_API_KEY",
+    ),
+    "azure": _spec(
+        "Azure OpenAI Service",
+        env_var="AZURE_OPENAI_API_KEY",
+        needs_base_url=True,
+        base_url_label="Azure Endpoint",
+        base_url_placeholder="https://YOUR-RESOURCE.openai.azure.com",
+        base_url_env="AZURE_OPENAI_ENDPOINT",
+        extra_fields=[
+            ExtraField(
+                label="API Version",
+                placeholder="2024-12-01-preview",
+                env_var="OPENAI_API_VERSION",
+                required=True,
+            ),
+        ],
+    ),
+    "ollama": _spec(
+        "Ollama (local models)",
+        needs_api_key=False,
+        needs_base_url=True,
+        base_url_label="Ollama Server URL",
+        base_url_placeholder="http://localhost:11434",
+        base_url_env="OLLAMA_BASE_URL",
+    ),
 }
 
 

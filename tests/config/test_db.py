@@ -19,6 +19,7 @@ class TestConfigDBSchema:
         assert "config_sections" in names
         assert "credentials" in names
         assert "migrations" in names
+        assert "chats" in names
 
 
 class TestConfigSections:
@@ -209,3 +210,33 @@ providers:
         assert db.get_provider_key("anthropic") == "sk-ant"
         llm = db.get_section("llm")
         assert llm["providers"]["anthropic"]["base_url"] == "https://ant-proxy.com"
+
+
+class TestChats:
+    def test_upsert_and_get_chat(self, config_db: ConfigDB) -> None:
+        messages = [{"id": "m1", "role": "user", "parts": [{"type": "text", "text": "hello"}]}]
+        config_db.upsert_chat("chat-1", "Incident Chat", messages)
+
+        chat = config_db.get_chat("chat-1")
+        assert chat is not None
+        assert chat["id"] == "chat-1"
+        assert chat["title"] == "Incident Chat"
+        assert chat["messages"] == messages
+
+    def test_list_chats_orders_desc_with_message_count(self, config_db: ConfigDB) -> None:
+        config_db.upsert_chat("chat-1", "First", [{"id": "m1"}])
+        config_db.upsert_chat("chat-2", "Second", [{"id": "m1"}, {"id": "m2"}])
+
+        chats = config_db.list_chats()
+        assert len(chats) == 2
+        ids = {chat["id"] for chat in chats}
+        assert ids == {"chat-1", "chat-2"}
+        counts = {chat["id"]: chat["message_count"] for chat in chats}
+        assert counts["chat-1"] == 1
+        assert counts["chat-2"] == 2
+
+    def test_delete_chat(self, config_db: ConfigDB) -> None:
+        config_db.upsert_chat("chat-delete", "to-delete", [])
+        assert config_db.get_chat("chat-delete") is not None
+        config_db.delete_chat("chat-delete")
+        assert config_db.get_chat("chat-delete") is None

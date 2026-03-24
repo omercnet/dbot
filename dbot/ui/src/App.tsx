@@ -1,8 +1,22 @@
+import { lazy, Suspense, useState } from "react";
+import { ChatPage } from "./pages/ChatPage";
+
+const SettingsPage = lazy(() =>
+  import("./pages/SettingsPage").then((m) => ({ default: m.SettingsPage })),
+);
+
+type Page = "chat" | "settings";
+
 export function App() {
-  return (
-    <div>
-      <h1>dbot</h1>
-      <p>IR agent — Wave 2 scaffold. Chat UI coming in Wave 3.</p>
-    </div>
-  );
+  const [page, setPage] = useState<Page>("chat");
+
+  if (page === "settings") {
+    return (
+      <Suspense fallback={<div className="settings-loading">Loading settings\u2026</div>}>
+        <SettingsPage onBack={() => setPage("chat")} />
+      </Suspense>
+    );
+  }
+
+  return <ChatPage onSettings={() => setPage("settings")} />;
 }

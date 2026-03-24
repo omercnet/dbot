@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from starlette.requests import Request
-from starlette.responses import HTMLResponse, JSONResponse
+from starlette.responses import JSONResponse
 from starlette.routing import Route, Router
 
 logger = logging.getLogger("dbot.config.api")
@@ -31,6 +31,60 @@ async def get_all_settings(request: Request) -> JSONResponse:
     db = _config_db
     sections = db.get_all_sections()
     return JSONResponse(sections)
+
+
+async def get_schema(request: Request) -> JSONResponse:
+    """GET /api/settings/schema — return JSON schemas for all config sections."""
+    from dbot.config.models import SECTION_MODELS
+
+    schemas = {}
+    for name, model_cls in SECTION_MODELS.items():
+        schemas[name] = model_cls.model_json_schema()
+    return JSONResponse(schemas)
+
+
+async def list_models(request: Request) -> JSONResponse:
+    """GET /api/settings/models — list user-configured models."""
+    db = _config_db
+    llm_config = db.get_section("llm")
+    return JSONResponse(llm_config.get("available_models", {}))
+
+
+async def put_model(request: Request) -> JSONResponse:
+    """PUT /api/settings/models — add or update a model. Body: {name, provider, model}"""
+    db = _config_db
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON body"}, status_code=400)
+    if not isinstance(body, dict):
+        return JSONResponse({"error": "Expected JSON object"}, status_code=400)
+    display_name = str(body.get("name", "")).strip()
+    provider = str(body.get("provider", "")).strip()
+    model = str(body.get("model", "")).strip()
+    if not display_name or not provider or not model:
+        return JSONResponse({"error": "name, provider, and model are required"}, status_code=400)
+    if ":" in provider:
+        return JSONResponse({"error": "provider should not contain ':'"}, status_code=400)
+    model_id = f"{provider}:{model}"
+    llm_config = db.get_section("llm")
+    models = llm_config.get("available_models", {})
+    models[display_name] = model_id
+    llm_config["available_models"] = models
+    db.set_section("llm", llm_config)
+    return JSONResponse({"status": "ok", "name": display_name, "model_id": model_id})
+
+
+async def delete_model(request: Request) -> JSONResponse:
+    """DELETE /api/settings/models/{name} — remove a model."""
+    display_name = request.path_params["name"]
+    db = _config_db
+    llm_config = db.get_section("llm")
+    models = llm_config.get("available_models", {})
+    models.pop(display_name, None)
+    llm_config["available_models"] = models
+    db.set_section("llm", llm_config)
+    return JSONResponse({"status": "ok", "deleted": display_name})
 
 
 async def get_section(request: Request) -> JSONResponse:
@@ -215,7 +269,7 @@ async def settings_health(request: Request) -> JSONResponse:
 
 
 async def list_providers(request: Request) -> JSONResponse:
-    """GET /api/settings/providers — list configured providers (names + base_url, no keys)."""
+    """GET /api/settings/providers — list only CONFIGURED providers."""
     db = _config_db
     from dbot.config.models import KNOWN_PROVIDERS
 
@@ -224,20 +278,45 @@ async def list_providers(request: Request) -> JSONResponse:
     providers_config = llm_config.get("providers", {})
 
     result = {}
-    for provider, default_env in KNOWN_PROVIDERS.items():
-        result[provider] = {
-            "has_key": provider in stored_keys,
-            "env_var": providers_config.get(provider, {}).get("env_var", default_env),
-            "base_url": providers_config.get(provider, {}).get("base_url", ""),
-        }
-    # Also include any non-standard providers that have keys stored
     for provider in stored_keys:
-        if provider not in result:
+        spec = KNOWN_PROVIDERS.get(provider)
+        result[provider] = {
+            "has_key": True,
+            "base_url": providers_config.get(provider, {}).get("base_url", ""),
+            "description": spec.description if spec else "",
+        }
+    for provider, cfg in providers_config.items():
+        if provider not in result and cfg.get("base_url"):
+            spec = KNOWN_PROVIDERS.get(provider)
             result[provider] = {
-                "has_key": True,
-                "env_var": providers_config.get(provider, {}).get("env_var", ""),
-                "base_url": providers_config.get(provider, {}).get("base_url", ""),
+                "has_key": provider in stored_keys,
+                "base_url": cfg.get("base_url", ""),
+                "description": spec.description if spec else "",
             }
+    return JSONResponse(result)
+
+
+async def available_providers(request: Request) -> JSONResponse:
+    """GET /api/settings/providers/available — all known providers with UI-facing specs."""
+    from dbot.config.models import KNOWN_PROVIDERS
+
+    db = _config_db
+    stored_keys = db.get_all_provider_keys()
+    llm_config = db.get_section("llm")
+    providers_config = llm_config.get("providers", {})
+
+    result = {}
+    for name, spec in KNOWN_PROVIDERS.items():
+        result[name] = {
+            "description": spec.description,
+            "needs_api_key": spec.needs_api_key,
+            "needs_base_url": spec.needs_base_url,
+            "api_key_label": spec.api_key_label,
+            "base_url_label": spec.base_url_label,
+            "base_url_placeholder": spec.base_url_placeholder,
+            "extra_fields": [f.model_dump(exclude={"env_var"}) for f in spec.extra_fields],
+            "configured": name in stored_keys or bool(providers_config.get(name, {}).get("base_url")),
+        }
     return JSONResponse(result)
 
 
@@ -249,31 +328,41 @@ async def put_provider(request: Request) -> JSONResponse:
         body = await request.json()
         api_key = body.get("api_key")
         base_url = body.get("base_url", "")
-        env_var = body.get("env_var", "")
-
-        # Store API key encrypted (if provided)
         import os
 
         from dbot.config.models import KNOWN_PROVIDERS
 
-        resolved_env = env_var or KNOWN_PROVIDERS.get(provider, "")
+        spec = KNOWN_PROVIDERS.get(provider)
 
         if api_key:
             db.set_provider_key(provider, api_key)
-            # Inject key into os.environ immediately
-            if resolved_env:
-                os.environ[resolved_env] = api_key
+            env_var = spec._env_var if spec else ""
+            if env_var:
+                os.environ[env_var] = api_key
 
-        # Always inject base_url if provided (not gated by api_key)
+        base_url_env = (spec._base_url_env if spec else "") or f"{provider.upper()}_BASE_URL"
         if base_url:
-            os.environ[f"{provider.upper()}_BASE_URL"] = base_url
+            os.environ[base_url_env] = base_url
+        elif base_url_env in os.environ:
+            del os.environ[base_url_env]
 
-        # Store base_url + env_var in LLM config providers section
+        extra_data: dict[str, str] = {}
+        if spec:
+            for field in spec.extra_fields:
+                key = field.label.lower().replace(" ", "_")
+                val = body.get(key, "")
+                if val:
+                    extra_data[key] = val
+                    if field.env_var:
+                        os.environ[field.env_var] = val
+                elif field.env_var and field.env_var in os.environ:
+                    del os.environ[field.env_var]
+
         from dbot.config.models import ProviderConfig
 
         llm_config = db.get_section("llm")
         providers = llm_config.get("providers", {})
-        providers[provider] = ProviderConfig(base_url=base_url, env_var=env_var).model_dump()
+        providers[provider] = ProviderConfig(base_url=base_url, **extra_data).model_dump()
         llm_config["providers"] = providers
         db.set_section("llm", llm_config)
 
@@ -298,14 +387,6 @@ async def delete_provider(request: Request) -> JSONResponse:
     return JSONResponse({"status": "ok", "provider": provider, "deleted": True})
 
 
-async def settings_page(request: Request) -> HTMLResponse:
-    """GET /settings — serve the settings HTML page."""
-    html_path = Path(__file__).parent / "settings.html"
-    if html_path.exists():
-        return HTMLResponse(html_path.read_text(encoding="utf-8"))
-    return HTMLResponse("<h1>Settings page not found</h1>", status_code=404)
-
-
 async def reload_app(request: Request) -> JSONResponse:
     """POST /api/reload — rebuild the chat UI with current config."""
     if _starlette_app is None:
@@ -314,7 +395,7 @@ async def reload_app(request: Request) -> JSONResponse:
     try:
         from pydantic_ai import Agent
 
-        from dbot.agent.chat import CHAT_SYSTEM_PROMPT
+        from dbot.agent.chat import CHAT_INSTRUCTIONS
         from dbot.agent.deps import IRDeps
         from dbot.agent.guardrails import GuardrailConfig, build_toolset
         from dbot.audit import AuditLogger
@@ -326,11 +407,9 @@ async def reload_app(request: Request) -> JSONResponse:
 
         llm_config = _config_db.get_section("llm")
         available_models = llm_config.get("available_models", {})
-        default_model = llm_config.get("default_model", "openai:gpt-4o")
 
         agent: Agent[IRDeps, str] = Agent(
-            default_model,
-            system_prompt=CHAT_SYSTEM_PROMPT,
+            instructions=CHAT_INSTRUCTIONS,
             toolsets=[toolset],  # type: ignore[list-item]
             output_type=str,
             deps_type=IRDeps,
@@ -351,7 +430,6 @@ async def reload_app(request: Request) -> JSONResponse:
         chat_app = agent.to_web(
             deps=deps,
             models=available_models,
-            instructions=CHAT_SYSTEM_PROMPT,
         )
 
         # Hot-swap: remove old / and chat routes, add new ones
@@ -373,6 +451,42 @@ async def reload_app(request: Request) -> JSONResponse:
         )
 
 
+async def list_chats(request: Request) -> JSONResponse:
+    db = _config_db
+    return JSONResponse(db.list_chats())
+
+
+async def get_chat(request: Request) -> JSONResponse:
+    chat_id = request.path_params["id"]
+    db = _config_db
+    chat = db.get_chat(chat_id)
+    if not chat:
+        return JSONResponse({"error": "Chat not found"}, status_code=404)
+    return JSONResponse(chat)
+
+
+async def put_chat(request: Request) -> JSONResponse:
+    chat_id = request.path_params["id"]
+    db = _config_db
+    try:
+        body = await request.json()
+        title_raw = body.get("title", "")
+        title = title_raw if isinstance(title_raw, str) else ""
+        messages_raw = body.get("messages", [])
+        messages = messages_raw if isinstance(messages_raw, list) else []
+        db.upsert_chat(chat_id, title, messages)
+        return JSONResponse({"status": "ok", "id": chat_id})
+    except Exception as e:
+        return JSONResponse({"status": "error", "detail": str(e)}, status_code=400)
+
+
+async def delete_chat(request: Request) -> JSONResponse:
+    chat_id = request.path_params["id"]
+    db = _config_db
+    db.delete_chat(chat_id)
+    return JSONResponse({"status": "ok", "deleted": True, "id": chat_id})
+
+
 def make_settings_router() -> Router:
     """Create the settings API router.
 
@@ -382,13 +496,22 @@ def make_settings_router() -> Router:
     return Router(
         routes=[
             Route("/api/reload", reload_app, methods=["POST"]),
+            Route("/api/chats/{id}", get_chat, methods=["GET"]),
+            Route("/api/chats/{id}", put_chat, methods=["PUT"]),
+            Route("/api/chats/{id}", delete_chat, methods=["DELETE"]),
+            Route("/api/chats", list_chats, methods=["GET"]),
             Route("/api/settings/providers/{provider}", put_provider, methods=["PUT"]),
             Route("/api/settings/providers/{provider}", delete_provider, methods=["DELETE"]),
+            Route("/api/settings/providers/available", available_providers, methods=["GET"]),
             Route("/api/settings/providers", list_providers, methods=["GET"]),
             Route("/api/settings/credentials/{pack}/test", test_connection, methods=["POST"]),
             Route("/api/settings/credentials/{pack}", put_credentials, methods=["PUT"]),
             Route("/api/settings/credentials/{pack}", delete_credentials, methods=["DELETE"]),
             Route("/api/settings/credentials", list_credentials, methods=["GET"]),
+            Route("/api/settings/models/{name}", delete_model, methods=["DELETE"]),
+            Route("/api/settings/models", list_models, methods=["GET"]),
+            Route("/api/settings/models", put_model, methods=["PUT"]),
+            Route("/api/settings/schema", get_schema, methods=["GET"]),
             Route("/api/settings/health", settings_health, methods=["GET"]),
             Route("/api/settings/{section}", get_section, methods=["GET"]),
             Route("/api/settings/{section}", put_section, methods=["PUT"]),
@@ -396,6 +519,5 @@ def make_settings_router() -> Router:
             Route("/api/packs/{pack}/params", get_pack_params, methods=["GET"]),
             Route("/api/packs/{pack}/readme", get_pack_readme, methods=["GET"]),
             Route("/api/packs", list_packs, methods=["GET"]),
-            Route("/settings", settings_page, methods=["GET"]),
         ]
     )

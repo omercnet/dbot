@@ -14,18 +14,20 @@ Or programmatically:
     uvicorn.run(app, host="127.0.0.1", port=7932)
 """
 
+import logging
 import os
 from collections.abc import Callable
 from pathlib import Path
 
 from pydantic_ai import Agent
+from pydantic_ai.settings import ModelSettings
 from starlette.applications import Starlette
 from starlette.requests import Request
-from starlette.responses import FileResponse
+from starlette.responses import FileResponse, JSONResponse, Response
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
-from dbot.agent.chat import CHAT_SYSTEM_PROMPT
+from dbot.agent.chat import CHAT_INSTRUCTIONS
 from dbot.agent.deps import IRDeps
 from dbot.agent.guardrails import GuardrailConfig, build_toolset
 from dbot.audit import AuditLogger
@@ -72,20 +74,24 @@ def _bootstrap_deps(
     providers_config = llm_config.get("providers", {})
     provider_keys = config_db.get_all_provider_keys()
     for provider, api_key in provider_keys.items():
-        # Determine env var name: custom > known default
         prov_cfg = providers_config.get(provider, {})
-        env_var = prov_cfg.get("env_var") or KNOWN_PROVIDERS.get(provider, "")
+        spec = KNOWN_PROVIDERS.get(provider)
+        env_var = spec._env_var if spec else ""
         if env_var and env_var not in os.environ:
             os.environ[env_var] = api_key
 
-        # Set base URL if configured
         base_url = prov_cfg.get("base_url", "")
         if base_url:
-            # PydanticAI uses provider-specific env vars for base URLs
-            base_env = f"{provider.upper()}_BASE_URL"
+            base_env = (spec._base_url_env if spec else "") or f"{provider.upper()}_BASE_URL"
             if base_env not in os.environ:
                 os.environ[base_env] = base_url
 
+        # Inject extra fields (e.g., Azure api_version)
+        if spec:
+            for field in spec.extra_fields:
+                val = prov_cfg.get(field.label.lower().replace(" ", "_"), "")
+                if val and field.env_var and field.env_var not in os.environ:
+                    os.environ[field.env_var] = val
     # Use DB-backed credential store
     from dbot.credentials.store import CredentialStore
 
@@ -123,37 +129,37 @@ def create_app(
     config = deps.guardrails
     toolset = build_toolset(config)
 
-    agent: Agent[IRDeps, str] = Agent(
-        "test",  # placeholder — to_web() models param provides real models
-        system_prompt=CHAT_SYSTEM_PROMPT,
-        toolsets=[toolset],  # type: ignore[list-item]
-        output_type=str,
-        deps_type=IRDeps,
-    )
+    from dbot.config.models import KNOWN_PROVIDERS
 
-    # Get available models from DB config
     llm_config = config_db.get_section("llm")
-    available_models = models or llm_config.get(
-        "available_models",
-        {
-            "GPT-4o": "openai:gpt-4o",
-            "GPT-4o mini": "openai:gpt-4o-mini",
-            "Claude Sonnet": "anthropic:claude-sonnet-4-5",
-        },
-    )
+    no_key_providers = {n for n, s in KNOWN_PROVIDERS.items() if not s.needs_api_key}
+    env_configured = {n for n, s in KNOWN_PROVIDERS.items() if s._env_var and os.environ.get(s._env_var)}
+    configured_providers = set(config_db.get_all_provider_keys().keys()) | no_key_providers | env_configured
+    user_models = models or llm_config.get("available_models", {})
+    available_models = {
+        name: model_id for name, model_id in user_models.items() if model_id.split(":")[0] in configured_providers
+    }
 
-    # Create the PydanticAI web app (provides /api/chat + /api/configure + /api/health)
-    # to_web() validates model providers — if no API keys, fall back to settings-only mode
+    logger = logging.getLogger("dbot.web")
+
     try:
+        default_model = next(iter(available_models.values()), None)
+        agent: Agent[IRDeps, str] = Agent(
+            default_model,
+            instructions=CHAT_INSTRUCTIONS,
+            toolsets=[toolset],  # type: ignore[list-item]
+            output_type=str,
+            deps_type=IRDeps,
+            model_settings=ModelSettings(parallel_tool_calls=False),
+        )
         starlette_app = agent.to_web(
             deps=deps,
             models=available_models,
-            instructions=CHAT_SYSTEM_PROMPT,
         )
         # Remove PydanticAI's HTML shell routes — we serve our own SPA
         starlette_app.routes[:] = [r for r in starlette_app.routes if getattr(r, "path", "") not in ("/", "/{id}")]
     except Exception:
-        # Fallback: plain Starlette app (settings work, chat won't until keys configured)
+        logger.warning("to_web() failed — chat disabled until API keys configured", exc_info=True)
         starlette_app = Starlette(routes=[])
 
     # Mount settings routes — inject state BEFORE adding routes
@@ -176,14 +182,20 @@ def create_app(
         if assets_dir.is_dir():
             starlette_app.routes.append(Mount("/assets", app=StaticFiles(directory=str(assets_dir)), name="spa-assets"))
 
-        # SPA catch-all: any non-API GET request serves index.html
+        # SPA catch-all: serves index.html for non-API GET requests
+        # API paths (/api/*) must NOT be caught here — they should 404 properly
         spa_index = str(ui_dist / "index.html")
 
-        async def spa_fallback(request: Request) -> FileResponse:
+        async def spa_fallback(request: Request) -> Response:
+            if request.url.path.startswith("/api/"):
+                return JSONResponse({"error": "Not found"}, status_code=404)
+            if request.method not in ("GET", "HEAD"):
+                return Response(status_code=405)
             return FileResponse(spa_index)
 
-        starlette_app.routes.append(Route("/{path:path}", spa_fallback, methods=["GET"]))
-        starlette_app.routes.append(Route("/", spa_fallback, methods=["GET"]))
+        all_methods = ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"]
+        starlette_app.routes.append(Route("/{path:path}", spa_fallback, methods=all_methods))
+        starlette_app.routes.append(Route("/", spa_fallback, methods=all_methods))
     return starlette_app
 
 

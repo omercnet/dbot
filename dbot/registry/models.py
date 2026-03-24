@@ -39,6 +39,7 @@ class ParamDef(BaseModel):
 
     name: str
     display: str = ""
+    display_password: str = ""
     type: int = 0
     required: bool = False
     default: str | None = None

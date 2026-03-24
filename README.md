@@ -152,31 +152,64 @@ dbot/
 
 ## Development
 
-dbot uses [hatch](https://hatch.pypa.io/) for project management.
+dbot uses [hatch](https://hatch.pypa.io/) for Python and npm for the React frontend.
+
+### Quick start
 
 ```bash
-hatch run test           # full test suite (307 tests)
-hatch run test-quick     # skip integration tests
-hatch run lint           # ruff check + format check
-hatch run fmt            # autofix + format
-hatch run typecheck      # mypy strict
-hatch run check          # ruff + biome + tsc + tests (dev gate)
-hatch run check-strict   # adds mypy on top of check
-hatch run ci             # full pipeline: lint + mypy + build-ui + all tests
-hatch run dev            # build UI + start web server
-hatch run lint-ui        # biome ci + tsc
-hatch run fmt-ui         # autofix frontend
-hatch run build-ui       # npm run build
-hatch run hooks          # install pre-commit hooks
-hatch version            # show current version
-hatch version minor      # bump 0.1.0 -> 0.2.0
+hatch env create                   # set up Python env
+cd dbot/ui && npm install && cd ..  # install frontend deps
+hatch run hooks                    # install pre-commit hooks
+hatch run check                    # verify everything works
 ```
+
+### Running locally
+
+**Production-like** (static UI build + server):
+
+```bash
+hatch run dev              # builds UI, starts server at http://127.0.0.1:7932
+```
+
+**Frontend development** (hot reload — two terminals):
+
+```bash
+# Terminal 1: Python API server
+hatch run dev-api          # starts backend at :7932
+
+# Terminal 2: Vite dev server with HMR
+cd dbot/ui && npm run dev  # starts at :5173, proxies /api/* to :7932
+```
+
+Open `http://localhost:5173` for live-reloading frontend development.
+Open `http://localhost:7932` for the production build (after `hatch run build-ui`).
+
+### Commands
+
+| Command | What it does |
+|---|---|
+| `hatch run dev` | Build UI + start server (production-like) |
+| `hatch run dev-api` | Start Python server only (pair with `npm run dev`) |
+| `hatch run test` | Full Python test suite (307 tests) |
+| `hatch run test-quick` | Skip integration tests |
+| `hatch run test-ui` | Frontend tests (vitest) |
+| `hatch run lint` | ruff check + format |
+| `hatch run lint-ui` | biome ci + tsc |
+| `hatch run fmt` | Autofix Python |
+| `hatch run fmt-ui` | Autofix frontend |
+| `hatch run build-ui` | npm run build |
+| `hatch run typecheck` | mypy |
+| `hatch run check` | Dev gate: ruff + biome + tsc + tests |
+| `hatch run check-strict` | Dev gate + mypy |
+| `hatch run ci` | Full CI pipeline |
+| `hatch run hooks` | Install pre-commit hooks |
 
 ### Frontend (dbot/ui/)
 
 ```bash
-npm run dev      # vite dev server with proxy to :7932
-npm run build    # tsc + vite build
+npm run dev      # vite dev server with HMR, proxies /api to :7932
+npm run build    # tsc + vite production build
+npm run test     # vitest
 npm run lint     # biome check
 npm run check    # biome ci + tsc
 npm run format   # biome format
