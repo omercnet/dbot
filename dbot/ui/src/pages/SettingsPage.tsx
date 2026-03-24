@@ -561,19 +561,45 @@ function usePackCredentials() {
   return { packs, loading, refresh };
 }
 
+type PackParam = {
+  name: string;
+  display: string;
+  display_password: string;
+  type: number;
+  required: boolean;
+  default: string | null;
+};
+
 function CredPackEditForm({
   pack,
-  paramNames,
   onSave,
   onCancel,
 }: {
   pack: string;
-  paramNames: string[];
   onSave: (pack: string, values: Record<string, string>) => Promise<void>;
   onCancel: () => void;
 }) {
   const [values, setValues] = useState<Record<string, string>>({});
+  const [params, setParams] = useState<PackParam[]>([]);
+  const [loadingParams, setLoadingParams] = useState(true);
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    fetch(`/api/packs/${encodeURIComponent(pack)}/params`)
+      .then((r) => (r.ok ? r.json() : { params: [] }))
+      .then((data: { params: PackParam[] }) => {
+        const visible = data.params.filter(
+          (p) => ![8, 15, 17].includes(p.type) && (p.required || p.type === 4 || p.type === 9),
+        );
+        setParams(visible);
+        const defaults: Record<string, string> = {};
+        for (const p of visible) {
+          if (p.default) defaults[p.name] = p.default;
+        }
+        setValues(defaults);
+      })
+      .finally(() => setLoadingParams(false));
+  }, [pack]);
 
   async function handleSave() {
     setSaving(true);
@@ -582,30 +608,68 @@ function CredPackEditForm({
     onCancel();
   }
 
+  function renderParam(p: PackParam) {
+    if (p.type === 9) {
+      return (
+        <div key={p.name}>
+          <label className="schema-field">
+            <span>{p.display || "Username"}</span>
+            <input
+              type="text"
+              className="input"
+              placeholder="(leave blank to keep)"
+              value={values[`${p.name}_id`] ?? ""}
+              onChange={(e) => setValues((prev) => ({ ...prev, [`${p.name}_id`]: e.target.value }))}
+            />
+          </label>
+          <label className="schema-field">
+            <span>{p.display_password || "Password"}</span>
+            <input
+              type="password"
+              className="input"
+              placeholder="(leave blank to keep)"
+              value={values[`${p.name}_password`] ?? ""}
+              onChange={(e) =>
+                setValues((prev) => ({ ...prev, [`${p.name}_password`]: e.target.value }))
+              }
+            />
+          </label>
+        </div>
+      );
+    }
+    const isSecret = p.type === 4;
+    return (
+      <label key={p.name} className="schema-field">
+        <span>{p.display || p.name}</span>
+        <input
+          type={isSecret ? "password" : "text"}
+          className="input"
+          placeholder={p.default || "(leave blank to keep)"}
+          value={values[p.name] ?? ""}
+          onChange={(e) => setValues((prev) => ({ ...prev, [p.name]: e.target.value }))}
+        />
+      </label>
+    );
+  }
+
   return (
     <div className="provider-row editing">
       <div className="provider-info">
         <span className="provider-name">{pack}</span>
       </div>
       <div className="provider-form">
-        {paramNames.map((name) => (
-          <label key={name} className="schema-field">
-            <span>{name}</span>
-            <input
-              type={
-                name.includes("secret") || name.includes("password") || name.includes("key")
-                  ? "password"
-                  : "text"
-              }
-              className="input"
-              placeholder={`••••••• (leave blank to keep)`}
-              value={values[name] ?? ""}
-              onChange={(e) => setValues((prev) => ({ ...prev, [name]: e.target.value }))}
-            />
-          </label>
-        ))}
+        {loadingParams ? (
+          <span style={{ color: "var(--text-muted)", fontSize: 13 }}>Loading params...</span>
+        ) : (
+          params.map(renderParam)
+        )}
         <div className="provider-actions">
-          <button type="button" className="btn btn-primary" onClick={handleSave} disabled={saving}>
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={handleSave}
+            disabled={saving || loadingParams}
+          >
             {saving ? "Saving\u2026" : "Save"}
           </button>
           <button type="button" className="btn btn-sm" onClick={onCancel}>
@@ -652,7 +716,6 @@ function CredentialsTab({
               <CredPackEditForm
                 key={pack}
                 pack={pack}
-                paramNames={params}
                 onSave={onSave}
                 onCancel={() => setEditing(null)}
               />
