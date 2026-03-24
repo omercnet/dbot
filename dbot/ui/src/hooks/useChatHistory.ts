@@ -29,26 +29,35 @@ type ApiChatSession = {
 export function useChatHistory(): ChatHistory {
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [activeId, setActiveId] = useState<string>("");
-  const [loading, setLoading] = useState<boolean>(false);
+  const [loading, setLoading] = useState(true);
 
-  const refresh = useCallback(() => {
+  const fetchSessions = useCallback(async () => {
+    const r = await fetch("/api/chats");
+    if (!r.ok) return [];
+    const data: ApiChatSession[] = await r.json();
+    return data.map((s) => ({
+      id: s.id,
+      title: s.title,
+      createdAt: s.created_at,
+      messageCount: s.message_count,
+    }));
+  }, []);
+
+  const refresh = useCallback(async () => {
     setLoading(true);
-    fetch("/api/chats")
-      .then((response) => (response.ok ? response.json() : []))
-      .then((data: ApiChatSession[]) => {
-        const mapped = data.map((session) => ({
-          id: session.id,
-          title: session.title,
-          createdAt: session.created_at,
-          messageCount: session.message_count,
-        }));
-        setSessions(mapped);
-        if (!activeId && mapped.length > 0) {
-          setActiveId(mapped[0].id);
-        }
-      })
-      .finally(() => setLoading(false));
-  }, [activeId]);
+    const mapped = await fetchSessions();
+    setSessions(mapped);
+    setLoading(false);
+    return mapped;
+  }, [fetchSessions]);
+
+  useEffect(() => {
+    fetchSessions().then((mapped) => {
+      setSessions(mapped);
+      setActiveId((cur) => cur || (mapped.length > 0 ? mapped[0].id : ""));
+      setLoading(false);
+    });
+  }, []); // biome-ignore lint/correctness/useExhaustiveDependencies: only fetch on mount
 
   const createSession = useCallback((): string => {
     const id = crypto.randomUUID();
@@ -57,7 +66,7 @@ export function useChatHistory(): ChatHistory {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ title: "", messages: [] }),
-    }).finally(() => refresh());
+    }).then(() => refresh());
     return id;
   }, [refresh]);
 
@@ -67,10 +76,8 @@ export function useChatHistory(): ChatHistory {
 
   const deleteSession = useCallback(
     (id: string) => {
-      fetch(`/api/chats/${encodeURIComponent(id)}`, {
-        method: "DELETE",
-      }).finally(() => {
-        setActiveId((current) => (current === id ? "" : current));
+      fetch(`/api/chats/${encodeURIComponent(id)}`, { method: "DELETE" }).then(() => {
+        setActiveId((cur) => (cur === id ? "" : cur));
         refresh();
       });
     },
@@ -84,10 +91,6 @@ export function useChatHistory(): ChatHistory {
       body: JSON.stringify({ title, messages }),
     });
   }, []);
-
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
 
   return {
     sessions,

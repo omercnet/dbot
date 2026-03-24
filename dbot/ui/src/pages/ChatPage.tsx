@@ -24,6 +24,7 @@ export function ChatPage({ onSettings }: { onSettings: () => void }) {
   const [lastUserText, setLastUserText] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [showCredDialog, setShowCredDialog] = useState(false);
+  const [dismissedCredPack, setDismissedCredPack] = useState<string | null>(null);
 
   const credRequired = useMemo(
     () => (status === "ready" || status === "error" ? detectCredentialRequired(messages) : null),
@@ -31,8 +32,11 @@ export function ChatPage({ onSettings }: { onSettings: () => void }) {
   );
 
   const isCredInvalid = credRequired?.status === "credentials_invalid";
+  const credDismissed = credRequired && dismissedCredPack === credRequired.pack;
   const showCredModal =
-    credRequired && (credRequired.status === "credentials_required" || showCredDialog);
+    credRequired &&
+    !credDismissed &&
+    (credRequired.status === "credentials_required" || showCredDialog);
 
   function handleSend(text: string) {
     setLastUserText(text);
@@ -195,7 +199,10 @@ export function ChatPage({ onSettings }: { onSettings: () => void }) {
           <CredentialDialog
             cred={credRequired}
             onSave={handleCredentialSave}
-            onDismiss={() => setShowCredDialog(false)}
+            onDismiss={() => {
+              setShowCredDialog(false);
+              setDismissedCredPack(credRequired.pack);
+            }}
           />
         )}
       </div>

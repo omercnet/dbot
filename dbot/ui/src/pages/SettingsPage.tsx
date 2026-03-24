@@ -561,15 +561,74 @@ function usePackCredentials() {
   return { packs, loading, refresh };
 }
 
+function CredPackEditForm({
+  pack,
+  paramNames,
+  onSave,
+  onCancel,
+}: {
+  pack: string;
+  paramNames: string[];
+  onSave: (pack: string, values: Record<string, string>) => Promise<void>;
+  onCancel: () => void;
+}) {
+  const [values, setValues] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState(false);
+
+  async function handleSave() {
+    setSaving(true);
+    await onSave(pack, values);
+    setSaving(false);
+    onCancel();
+  }
+
+  return (
+    <div className="provider-row editing">
+      <div className="provider-info">
+        <span className="provider-name">{pack}</span>
+      </div>
+      <div className="provider-form">
+        {paramNames.map((name) => (
+          <label key={name} className="schema-field">
+            <span>{name}</span>
+            <input
+              type={
+                name.includes("secret") || name.includes("password") || name.includes("key")
+                  ? "password"
+                  : "text"
+              }
+              className="input"
+              placeholder={`••••••• (leave blank to keep)`}
+              value={values[name] ?? ""}
+              onChange={(e) => setValues((prev) => ({ ...prev, [name]: e.target.value }))}
+            />
+          </label>
+        ))}
+        <div className="provider-actions">
+          <button type="button" className="btn btn-primary" onClick={handleSave} disabled={saving}>
+            {saving ? "Saving\u2026" : "Save"}
+          </button>
+          <button type="button" className="btn btn-sm" onClick={onCancel}>
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function CredentialsTab({
   packs,
   onDelete,
   onTest,
+  onSave,
 }: {
   packs: Record<string, string[]>;
   onDelete: (pack: string) => Promise<void>;
   onTest: (pack: string) => Promise<boolean>;
+  onSave: (pack: string, values: Record<string, string>) => Promise<void>;
 }) {
+  const [editing, setEditing] = useState<string | null>(null);
   const entries = Object.entries(packs);
 
   return (
@@ -588,26 +647,39 @@ function CredentialsTab({
         </div>
       ) : (
         <div className="provider-list">
-          {entries.map(([pack, params]) => (
-            <div key={pack} className="provider-row">
-              <div className="provider-info">
-                <span className="provider-name">{pack}</span>
-                <span className="provider-url">{params.join(", ")}</span>
+          {entries.map(([pack, params]) =>
+            editing === pack ? (
+              <CredPackEditForm
+                key={pack}
+                pack={pack}
+                paramNames={params}
+                onSave={onSave}
+                onCancel={() => setEditing(null)}
+              />
+            ) : (
+              <div key={pack} className="provider-row">
+                <div className="provider-info">
+                  <span className="provider-name">{pack}</span>
+                  <span className="provider-url">{params.join(", ")}</span>
+                </div>
+                <div className="provider-actions">
+                  <button type="button" className="btn btn-sm" onClick={() => setEditing(pack)}>
+                    Edit
+                  </button>
+                  <button type="button" className="btn btn-sm" onClick={() => onTest(pack)}>
+                    Test
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-danger"
+                    onClick={() => onDelete(pack)}
+                  >
+                    Remove
+                  </button>
+                </div>
               </div>
-              <div className="provider-actions">
-                <button type="button" className="btn btn-sm" onClick={() => onTest(pack)}>
-                  Test
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-sm btn-danger"
-                  onClick={() => onDelete(pack)}
-                >
-                  Remove
-                </button>
-              </div>
-            </div>
-          ))}
+            ),
+          )}
         </div>
       )}
     </section>
@@ -846,7 +918,24 @@ export function SettingsPage({ onBack }: { onBack: () => void }) {
             onDelete={deleteModel}
           />
         ) : activeTab === "credentials" ? (
-          <CredentialsTab packs={credPacks} onDelete={deleteCredPack} onTest={testCredPack} />
+          <CredentialsTab
+            packs={credPacks}
+            onDelete={deleteCredPack}
+            onTest={testCredPack}
+            onSave={async (pack, values) => {
+              const entries = Object.entries(values).filter(([, v]) => v);
+              if (entries.length === 0) return;
+              for (const [name, value] of entries) {
+                await fetch(`/api/settings/credentials/${encodeURIComponent(pack)}`, {
+                  method: "PUT",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ [name]: value }),
+                });
+              }
+              showToast(`${pack} credentials updated`, true);
+              await refreshCreds();
+            }}
+          />
         ) : schemas[activeTab] ? (
           <SchemaSection
             name={activeTab}
