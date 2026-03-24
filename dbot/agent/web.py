@@ -20,13 +20,14 @@ from collections.abc import Callable
 from pathlib import Path
 
 from pydantic_ai import Agent
+from pydantic_ai.settings import ModelSettings
 from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import FileResponse, JSONResponse, Response
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
-from dbot.agent.chat import CHAT_SYSTEM_PROMPT
+from dbot.agent.chat import CHAT_INSTRUCTIONS
 from dbot.agent.deps import IRDeps
 from dbot.agent.guardrails import GuardrailConfig, build_toolset
 from dbot.audit import AuditLogger
@@ -129,11 +130,11 @@ def create_app(
     toolset = build_toolset(config)
 
     agent: Agent[IRDeps, str] = Agent(
-        "test",  # placeholder — to_web() models param provides real models
-        system_prompt=CHAT_SYSTEM_PROMPT,
+        instructions=CHAT_INSTRUCTIONS,
         toolsets=[toolset],  # type: ignore[list-item]
         output_type=str,
         deps_type=IRDeps,
+        model_settings=ModelSettings(parallel_tool_calls=False),
     )
 
     from dbot.config.models import KNOWN_PROVIDERS
@@ -154,7 +155,6 @@ def create_app(
         starlette_app = agent.to_web(
             deps=deps,
             models=available_models,
-            instructions=CHAT_SYSTEM_PROMPT,
         )
         # Remove PydanticAI's HTML shell routes — we serve our own SPA
         starlette_app.routes[:] = [r for r in starlette_app.routes if getattr(r, "path", "") not in ("/", "/{id}")]

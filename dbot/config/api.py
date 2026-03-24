@@ -384,7 +384,7 @@ async def reload_app(request: Request) -> JSONResponse:
     try:
         from pydantic_ai import Agent
 
-        from dbot.agent.chat import CHAT_SYSTEM_PROMPT
+        from dbot.agent.chat import CHAT_INSTRUCTIONS
         from dbot.agent.deps import IRDeps
         from dbot.agent.guardrails import GuardrailConfig, build_toolset
         from dbot.audit import AuditLogger
@@ -396,11 +396,9 @@ async def reload_app(request: Request) -> JSONResponse:
 
         llm_config = _config_db.get_section("llm")
         available_models = llm_config.get("available_models", {})
-        default_model = llm_config.get("default_model", "openai:gpt-4o")
 
         agent: Agent[IRDeps, str] = Agent(
-            default_model,
-            system_prompt=CHAT_SYSTEM_PROMPT,
+            instructions=CHAT_INSTRUCTIONS,
             toolsets=[toolset],  # type: ignore[list-item]
             output_type=str,
             deps_type=IRDeps,
@@ -421,7 +419,6 @@ async def reload_app(request: Request) -> JSONResponse:
         chat_app = agent.to_web(
             deps=deps,
             models=available_models,
-            instructions=CHAT_SYSTEM_PROMPT,
         )
 
         # Hot-swap: remove old / and chat routes, add new ones

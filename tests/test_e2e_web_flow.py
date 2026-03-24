@@ -12,7 +12,7 @@ from pydantic_ai import Agent
 from pydantic_ai.models.test import TestModel
 from starlette.testclient import TestClient
 
-from dbot.agent.chat import CHAT_SYSTEM_PROMPT
+from dbot.agent.chat import CHAT_INSTRUCTIONS, CHAT_SYSTEM_PROMPT
 from dbot.agent.deps import IRDeps
 from dbot.agent.guardrails import GuardrailConfig, build_toolset
 from dbot.audit import AuditLogger
@@ -46,7 +46,7 @@ def e2e_app(tmp_path: Path, catalog: Catalog) -> TestClient:
 
     agent: Agent[IRDeps, str] = Agent(
         "test",
-        system_prompt=CHAT_SYSTEM_PROMPT,
+        instructions=CHAT_INSTRUCTIONS,
         toolsets=[toolset],  # type: ignore[list-item]
         output_type=str,
         deps_type=IRDeps,
@@ -65,7 +65,6 @@ def e2e_app(tmp_path: Path, catalog: Catalog) -> TestClient:
         app = agent.to_web(
             deps=deps,
             models={"Test Model": "test"},
-            instructions=CHAT_SYSTEM_PROMPT,
         )
 
         from dbot.config.api import init_api_state, make_settings_router

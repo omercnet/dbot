@@ -15,7 +15,7 @@ from pydantic_ai import Agent
 from pydantic_ai.models.test import TestModel
 from starlette.testclient import TestClient
 
-from dbot.agent.chat import CHAT_SYSTEM_PROMPT
+from dbot.agent.chat import CHAT_INSTRUCTIONS, CHAT_SYSTEM_PROMPT
 from dbot.agent.deps import IRDeps
 from dbot.agent.guardrails import GuardrailConfig, build_toolset
 from dbot.audit import AuditLogger
@@ -67,7 +67,7 @@ def chat_app(deps: IRDeps, catalog: Catalog, config_db: ConfigDB) -> TestClient:
 
     agent: Agent[IRDeps, str] = Agent(
         "test",
-        system_prompt=CHAT_SYSTEM_PROMPT,
+        instructions=CHAT_INSTRUCTIONS,
         toolsets=[toolset],  # type: ignore[list-item]
         output_type=str,
         deps_type=IRDeps,
@@ -77,7 +77,6 @@ def chat_app(deps: IRDeps, catalog: Catalog, config_db: ConfigDB) -> TestClient:
         starlette_app = agent.to_web(
             deps=deps,
             models={"Test": "test"},
-            instructions=CHAT_SYSTEM_PROMPT,
         )
         starlette_app.routes[:] = [r for r in starlette_app.routes if getattr(r, "path", "") not in ("/", "/{id}")]
 
