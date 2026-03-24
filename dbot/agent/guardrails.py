@@ -163,7 +163,7 @@ def build_toolset(config: GuardrailConfig) -> AbstractToolset:
             for p in integration.params:
                 if p.hidden or p.type in (8, 15, 17):
                     continue
-                if p.is_credential or (p.required and p.type == 0 and "url" in p.name.lower()):
+                if p.is_credential or p.required:
                     param_info: dict[str, object] = {
                         "name": p.name,
                         "display": p.display or p.name,
