@@ -543,11 +543,83 @@ function ModelsTab({
   );
 }
 
-type Tab = "providers" | "models" | string;
+function usePackCredentials() {
+  const [packs, setPacks] = useState<Record<string, string[]>>({});
+  const [loading, setLoading] = useState(true);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    const r = await fetch("/api/settings/credentials");
+    if (r.ok) setPacks(await r.json());
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
+
+  return { packs, loading, refresh };
+}
+
+function CredentialsTab({
+  packs,
+  onDelete,
+  onTest,
+}: {
+  packs: Record<string, string[]>;
+  onDelete: (pack: string) => Promise<void>;
+  onTest: (pack: string) => Promise<boolean>;
+}) {
+  const entries = Object.entries(packs);
+
+  return (
+    <section className="settings-section">
+      <p className="settings-hint">
+        Integration credentials configured via the chat credential dialog or API. These are used
+        when invoking security tools.
+      </p>
+
+      {entries.length === 0 ? (
+        <div className="empty-state" style={{ padding: "40px 0" }}>
+          <p>
+            No integration credentials configured yet. They will appear here when you configure them
+            during chat.
+          </p>
+        </div>
+      ) : (
+        <div className="provider-list">
+          {entries.map(([pack, params]) => (
+            <div key={pack} className="provider-row">
+              <div className="provider-info">
+                <span className="provider-name">{pack}</span>
+                <span className="provider-url">{params.join(", ")}</span>
+              </div>
+              <div className="provider-actions">
+                <button type="button" className="btn btn-sm" onClick={() => onTest(pack)}>
+                  Test
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-danger"
+                  onClick={() => onDelete(pack)}
+                >
+                  Remove
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+type Tab = "providers" | "models" | "credentials" | string;
 
 export function SettingsPage({ onBack }: { onBack: () => void }) {
   const { configured, available, loading: providersLoading, refresh } = useProviders();
   const { models, loading: modelsLoading, refresh: refreshModels } = useConfiguredModels();
+  const { packs: credPacks, loading: credsLoading, refresh: refreshCreds } = usePackCredentials();
   const { schemas, values, setValues, loading: schemasLoading } = useSchemas();
   const [toast, setToast] = useState<Toast>(null);
   const [reloading, setReloading] = useState(false);
@@ -643,9 +715,37 @@ export function SettingsPage({ onBack }: { onBack: () => void }) {
     }
   }
 
+  const credCount = Object.keys(credPacks).length;
+
+  async function deleteCredPack(pack: string) {
+    const r = await fetch(`/api/settings/credentials/${encodeURIComponent(pack)}`, {
+      method: "DELETE",
+    });
+    if (r.ok) {
+      showToast(`${pack} credentials removed`, true);
+      await refreshCreds();
+    } else {
+      showToast(`Failed to remove ${pack}`, false);
+    }
+  }
+
+  async function testCredPack(pack: string): Promise<boolean> {
+    const r = await fetch(`/api/settings/credentials/${encodeURIComponent(pack)}/test`, {
+      method: "POST",
+    });
+    const body = await r.json().catch(() => ({}));
+    if (r.ok && body.success) {
+      showToast(`${pack}: connection OK`, true);
+      return true;
+    }
+    showToast(`${pack}: ${body.error || "test failed"}`, false);
+    return false;
+  }
+
   const tabs: { id: Tab; label: string }[] = [
     { id: "providers", label: `Providers (${configuredCount})` },
     { id: "models", label: `Models (${modelCount})` },
+    { id: "credentials", label: `Integrations (${credCount})` },
     ...Object.entries(schemas).map(([id, s]) => ({ id, label: s.title ?? id })),
   ];
 
@@ -681,7 +781,7 @@ export function SettingsPage({ onBack }: { onBack: () => void }) {
           ))}
         </nav>
 
-        {providersLoading || modelsLoading || schemasLoading ? (
+        {providersLoading || modelsLoading || schemasLoading || credsLoading ? (
           <div className="settings-loading">Loading…</div>
         ) : activeTab === "providers" ? (
           <section className="settings-section">
@@ -745,6 +845,8 @@ export function SettingsPage({ onBack }: { onBack: () => void }) {
             onAdd={addModel}
             onDelete={deleteModel}
           />
+        ) : activeTab === "credentials" ? (
+          <CredentialsTab packs={credPacks} onDelete={deleteCredPack} onTest={testCredPack} />
         ) : schemas[activeTab] ? (
           <SchemaSection
             name={activeTab}

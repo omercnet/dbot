@@ -218,6 +218,47 @@ def build_toolset(config: GuardrailConfig) -> AbstractToolset:
             duration_ms=duration_ms,
         )
 
+        error_str = str(result.get("error", "")).lower()
+        results_str = str(result.get("results", "")).lower()
+        auth_keywords = (
+            "401",
+            "unauthorized",
+            "authentication failed",
+            "invalid credentials",
+            "access denied",
+            "forbidden",
+            "invalid api key",
+            "token expired",
+        )
+        is_auth_error = not result.get("success", False) and any(
+            kw in error_str or kw in results_str for kw in auth_keywords
+        )
+
+        if is_auth_error and integration.credential_params:
+            config_params = []
+            for p in integration.params:
+                if p.hidden or p.type in (8, 15, 17):
+                    continue
+                if p.is_credential or p.required:
+                    param_info: dict[str, object] = {
+                        "name": p.name,
+                        "display": p.display or p.name,
+                        "type": p.type,
+                        "required": p.required,
+                    }
+                    if p.default:
+                        param_info["default"] = p.default
+                    if p.display_password:
+                        param_info["display_password"] = p.display_password
+                    config_params.append(param_info)
+            return {
+                "status": "credentials_invalid",
+                "tool_name": tool_name,
+                "pack": integration.pack,
+                "error": result.get("error", "Authentication failed"),
+                "config_params": config_params,
+            }
+
         return {
             "tool_name": tool_name,
             "reason": reason,

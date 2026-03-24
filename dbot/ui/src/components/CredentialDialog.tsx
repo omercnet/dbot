@@ -13,6 +13,8 @@ type CredentialRequired = {
   pack: string;
   required_credentials: string[];
   config_params?: ConfigParam[];
+  status?: "credentials_required" | "credentials_invalid";
+  error?: string;
 };
 
 function ParamField({
@@ -149,7 +151,11 @@ export function detectCredentialRequired(
         (typeof part.type === "string" && part.type.startsWith("tool-"))
       ) {
         const output = (part as { output?: Record<string, unknown> }).output;
-        if (output && output.status === "credentials_required" && typeof output.pack === "string") {
+        if (
+          output &&
+          (output.status === "credentials_required" || output.status === "credentials_invalid") &&
+          typeof output.pack === "string"
+        ) {
           return {
             pack: output.pack as string,
             required_credentials: Array.isArray(output.required_credentials)
@@ -158,6 +164,8 @@ export function detectCredentialRequired(
             config_params: Array.isArray(output.config_params)
               ? (output.config_params as ConfigParam[])
               : undefined,
+            status: output.status as "credentials_required" | "credentials_invalid",
+            error: typeof output.error === "string" ? output.error : undefined,
           };
         }
       }

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChatInput } from "../components/ChatInput";
 import { CredentialDialog, detectCredentialRequired } from "../components/CredentialDialog";
 import { HistorySidebar } from "../components/HistorySidebar";
@@ -25,11 +25,16 @@ export function ChatPage({ onSettings }: { onSettings: () => void }) {
   );
   const [lastUserText, setLastUserText] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [showCredDialog, setShowCredDialog] = useState(false);
 
   const credRequired = useMemo(
     () => (status === "ready" || status === "error" ? detectCredentialRequired(messages) : null),
     [messages, status],
   );
+
+  const isCredInvalid = credRequired?.status === "credentials_invalid";
+  const showCredModal =
+    credRequired && (credRequired.status === "credentials_required" || showCredDialog);
 
   function handleSend(text: string) {
     setLastUserText(text);
@@ -72,16 +77,28 @@ export function ChatPage({ onSettings }: { onSettings: () => void }) {
       });
   }, [activeId, setMessages]);
 
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const saveRef = useRef(saveSession);
+  saveRef.current = saveSession;
+
+  const debouncedSave = useCallback(
+    (id: string, msgs: typeof messages) => {
+      clearTimeout(saveTimer.current);
+      saveTimer.current = setTimeout(() => {
+        const firstUser = msgs.find((m) => m.role === "user");
+        const titlePart = firstUser?.parts.find((p) => p.type === "text");
+        const title = titlePart?.type === "text" ? titlePart.text.slice(0, 80) : "";
+        saveRef.current(id, title, msgs);
+        refresh();
+      }, 800);
+    },
+    [refresh],
+  );
+
   useEffect(() => {
-    if (!activeId) {
-      return;
-    }
-    const firstUser = messages.find((message) => message.role === "user");
-    const titlePart = firstUser?.parts.find((part) => part.type === "text");
-    const title = titlePart?.type === "text" ? titlePart.text.slice(0, 80) : "";
-    saveSession(activeId, title, messages);
-    refresh();
-  }, [activeId, messages, refresh, saveSession]);
+    if (!activeId || messages.length === 0) return;
+    debouncedSave(activeId, messages);
+  }, [activeId, messages, debouncedSave]);
 
   return (
     <div className="app-shell">
@@ -145,7 +162,7 @@ export function ChatPage({ onSettings }: { onSettings: () => void }) {
 
         {status === "error" && error && (
           <div className="error-banner" data-testid="error-banner">
-            <span className="error-banner-icon">\u26A0</span>
+            <span className="error-banner-icon">{"\u26A0"}</span>
             <span className="error-banner-text">{error.message || "Something went wrong"}</span>
             <button
               type="button"
@@ -157,13 +174,26 @@ export function ChatPage({ onSettings }: { onSettings: () => void }) {
           </div>
         )}
 
+        {isCredInvalid && credRequired && (
+          <div className="error-banner cred-callout" data-testid="cred-callout">
+            <span className="error-banner-icon">{"\u{1F511}"}</span>
+            <span className="error-banner-text">
+              <strong>{credRequired.pack}</strong> credentials failed
+              {credRequired.error ? `: ${credRequired.error}` : "."}
+            </span>
+            <button type="button" className="btn btn-sm" onClick={() => setShowCredDialog(true)}>
+              Reconfigure
+            </button>
+          </div>
+        )}
+
         <ChatInput onSend={handleSend} status={status} onStop={stop} />
 
-        {credRequired && (
+        {showCredModal && credRequired && (
           <CredentialDialog
             cred={credRequired}
             onSave={handleCredentialSave}
-            onDismiss={() => {}}
+            onDismiss={() => setShowCredDialog(false)}
           />
         )}
       </div>

@@ -55,7 +55,7 @@ describe("detectCredentialRequired", () => {
       },
     ];
     const result = detectCredentialRequired(msgs as never);
-    expect(result).toEqual({ pack: "VirusTotal", required_credentials: ["apikey"] });
+    expect(result).toMatchObject({ pack: "VirusTotal", required_credentials: ["apikey"] });
   });
 
   it("returns null for non-credential tool outputs", () => {
