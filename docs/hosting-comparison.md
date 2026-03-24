@@ -155,7 +155,7 @@ location / {
 
 Same VPS as above, but containerized:
 
-`compose.yml` written to `/home/omer/dev/dbot/docs/compose.yml`
+See `docs/compose.yml` for the Docker Compose configuration.
 
 | | |
 |---|---|

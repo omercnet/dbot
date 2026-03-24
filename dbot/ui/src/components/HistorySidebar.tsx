@@ -68,11 +68,14 @@ export function HistorySidebar({
       <div className="sidebar-sessions">
         {sessions.length === 0 && <div className="sidebar-empty">No conversations yet</div>}
         {sessions.map((s) => (
-          <button
-            type="button"
+          <div
             key={s.id}
             className={`sidebar-item ${activeId === s.id ? "active" : ""}`}
             onClick={() => onSwitchSession(s.id)}
+            onKeyDown={(e) => e.key === "Enter" && onSwitchSession(s.id)}
+            tabIndex={0}
+            role="option"
+            aria-selected={activeId === s.id}
           >
             <div className="sidebar-item-content">
               <div className="sidebar-item-title">{s.title || "New conversation"}</div>
@@ -99,7 +102,7 @@ export function HistorySidebar({
                 <path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14" />
               </svg>
             </button>
-          </button>
+          </div>
         ))}
       </div>
     </aside>

@@ -45,13 +45,17 @@ export function ChatPage({ onSettings }: { onSettings: () => void }) {
 
   async function handleCredentialSave(pack: string, credentials: Record<string, string>) {
     const entries = Object.entries(credentials).filter(([, v]) => v);
+    let allOk = true;
     for (const [name, value] of entries) {
-      await fetch(`/api/settings/credentials/${encodeURIComponent(pack)}`, {
+      const r = await fetch(`/api/settings/credentials/${encodeURIComponent(pack)}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ [name]: value }),
       });
+      if (!r.ok) allOk = false;
     }
+    if (!allOk) return false;
+    setDismissedCredPack(null);
     if (lastUserText) {
       sendMessage({ text: lastUserText });
     }

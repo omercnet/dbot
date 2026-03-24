@@ -140,21 +140,18 @@ def create_app(
         name: model_id for name, model_id in user_models.items() if model_id.split(":")[0] in configured_providers
     }
 
-    default_model = next(iter(available_models.values()), None)
-    agent: Agent[IRDeps, str] = Agent(
-        default_model,
-        instructions=CHAT_INSTRUCTIONS,
-        toolsets=[toolset],  # type: ignore[list-item]
-        output_type=str,
-        deps_type=IRDeps,
-        model_settings=ModelSettings(parallel_tool_calls=False),
-    )
-
     logger = logging.getLogger("dbot.web")
 
-    # Create the PydanticAI web app (provides /api/chat + /api/configure + /api/health)
-    # to_web() validates model providers — if no API keys, fall back to settings-only mode
     try:
+        default_model = next(iter(available_models.values()), None)
+        agent: Agent[IRDeps, str] = Agent(
+            default_model,
+            instructions=CHAT_INSTRUCTIONS,
+            toolsets=[toolset],  # type: ignore[list-item]
+            output_type=str,
+            deps_type=IRDeps,
+            model_settings=ModelSettings(parallel_tool_calls=False),
+        )
         starlette_app = agent.to_web(
             deps=deps,
             models=available_models,
@@ -192,7 +189,7 @@ def create_app(
         async def spa_fallback(request: Request) -> Response:
             if request.url.path.startswith("/api/"):
                 return JSONResponse({"error": "Not found"}, status_code=404)
-            if request.method != "GET":
+            if request.method not in ("GET", "HEAD"):
                 return Response(status_code=405)
             return FileResponse(spa_index)
 

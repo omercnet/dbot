@@ -78,12 +78,14 @@ check = [
     "lint",
     "lint-ui",
     "test-quick",
+    "test-ui",
 ]
 check-strict = [
     "lint",
     "lint-ui",
     "typecheck",
     "test-quick",
+    "test-ui",
 ]
 ci = [
     "lint",

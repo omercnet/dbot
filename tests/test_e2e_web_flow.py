@@ -12,7 +12,7 @@ from pydantic_ai import Agent
 from pydantic_ai.models.test import TestModel
 from starlette.testclient import TestClient
 
-from dbot.agent.chat import CHAT_INSTRUCTIONS, CHAT_SYSTEM_PROMPT
+from dbot.agent.chat import CHAT_INSTRUCTIONS
 from dbot.agent.deps import IRDeps
 from dbot.agent.guardrails import GuardrailConfig, build_toolset
 from dbot.audit import AuditLogger
