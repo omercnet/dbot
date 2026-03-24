@@ -6,6 +6,14 @@ export default defineConfig({
   build: {
     outDir: "dist",
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          "ai-sdk": ["ai", "@ai-sdk/react"],
+          markdown: ["react-markdown", "remark-gfm"],
+        },
+      },
+    },
   },
   server: {
     proxy: {

@@ -1,7 +1,10 @@
 import type { UIMessage } from "ai";
-import { useState } from "react";
-import { MarkdownContent } from "./MarkdownContent";
+import { lazy, Suspense, useState } from "react";
 import { ToolCallCard } from "./ToolCallCard";
+
+const MarkdownContent = lazy(() =>
+  import("./MarkdownContent").then((m) => ({ default: m.MarkdownContent })),
+);
 
 function CopyButton({ getText }: { getText: () => string }) {
   const [copied, setCopied] = useState(false);
@@ -112,8 +115,12 @@ export function MessageBubble({
         {message.parts.map((part, i) => {
           if (part.type === "text") {
             if (isAssistant) {
-              // biome-ignore lint/suspicious/noArrayIndexKey: text parts lack stable IDs
-              return <MarkdownContent key={i} text={part.text} />;
+              return (
+                // biome-ignore lint/suspicious/noArrayIndexKey: text parts lack stable IDs
+                <Suspense key={i} fallback={<span>{part.text}</span>}>
+                  <MarkdownContent text={part.text} />
+                </Suspense>
+              );
             }
             // biome-ignore lint/suspicious/noArrayIndexKey: text parts lack stable IDs
             return <TextContent key={i} text={part.text} />;

@@ -53,12 +53,19 @@ async def list_models(request: Request) -> JSONResponse:
 async def put_model(request: Request) -> JSONResponse:
     """PUT /api/settings/models — add or update a model. Body: {name, provider, model}"""
     db = _config_db
-    body = await request.json()
-    display_name = body.get("name", "").strip()
-    provider = body.get("provider", "").strip()
-    model = body.get("model", "").strip()
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON body"}, status_code=400)
+    if not isinstance(body, dict):
+        return JSONResponse({"error": "Expected JSON object"}, status_code=400)
+    display_name = str(body.get("name", "")).strip()
+    provider = str(body.get("provider", "")).strip()
+    model = str(body.get("model", "")).strip()
     if not display_name or not provider or not model:
         return JSONResponse({"error": "name, provider, and model are required"}, status_code=400)
+    if ":" in provider:
+        return JSONResponse({"error": "provider should not contain ':'"}, status_code=400)
     model_id = f"{provider}:{model}"
     llm_config = db.get_section("llm")
     models = llm_config.get("available_models", {})
@@ -500,6 +507,7 @@ def make_settings_router() -> Router:
             Route("/api/settings/models/{name}", delete_model, methods=["DELETE"]),
             Route("/api/settings/models", list_models, methods=["GET"]),
             Route("/api/settings/models", put_model, methods=["PUT"]),
+            Route("/api/settings/schema", get_schema, methods=["GET"]),
             Route("/api/settings/health", settings_health, methods=["GET"]),
             Route("/api/settings/{section}", get_section, methods=["GET"]),
             Route("/api/settings/{section}", put_section, methods=["PUT"]),
@@ -507,6 +515,5 @@ def make_settings_router() -> Router:
             Route("/api/packs/{pack}/params", get_pack_params, methods=["GET"]),
             Route("/api/packs/{pack}/readme", get_pack_readme, methods=["GET"]),
             Route("/api/packs", list_packs, methods=["GET"]),
-            Route("/api/settings/schema", get_schema, methods=["GET"]),
         ]
     )

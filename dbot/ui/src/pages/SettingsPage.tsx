@@ -29,12 +29,16 @@ function useProviders() {
 
   const refresh = useCallback(async () => {
     setLoading(true);
-    const [cRes, aRes] = await Promise.all([
-      fetch("/api/settings/providers"),
-      fetch("/api/settings/providers/available"),
-    ]);
-    if (cRes.ok) setConfigured(await cRes.json());
-    if (aRes.ok) setAvailable(await aRes.json());
+    try {
+      const [cRes, aRes] = await Promise.all([
+        fetch("/api/settings/providers"),
+        fetch("/api/settings/providers/available"),
+      ]);
+      if (cRes.ok) setConfigured(await cRes.json());
+      if (aRes.ok) setAvailable(await aRes.json());
+    } catch {
+      // Network error — leave state as-is
+    }
     setLoading(false);
   }, []);
 
@@ -51,13 +55,13 @@ function useSchemas() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    Promise.all([fetch("/api/settings/schema"), fetch("/api/settings")]).then(
-      async ([sRes, vRes]) => {
+    Promise.all([fetch("/api/settings/schema"), fetch("/api/settings")])
+      .then(async ([sRes, vRes]) => {
         if (sRes.ok) setSchemas(await sRes.json());
         if (vRes.ok) setValues(await vRes.json());
-        setLoading(false);
-      },
-    );
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
   }, []);
 
   return { schemas, values, setValues, loading };
@@ -69,8 +73,12 @@ function useConfiguredModels() {
 
   const refresh = useCallback(async () => {
     setLoading(true);
-    const r = await fetch("/api/settings/models");
-    if (r.ok) setModels(await r.json());
+    try {
+      const r = await fetch("/api/settings/models");
+      if (r.ok) setModels(await r.json());
+    } catch {
+      // Network error
+    }
     setLoading(false);
   }, []);
 
