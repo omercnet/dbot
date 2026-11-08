@@ -6,7 +6,6 @@ Free OpenCode Zen models only work through the CLI, not the raw API.
 
 import json
 import os
-import re
 import shutil
 import subprocess
 import sys
@@ -18,11 +17,11 @@ pytestmark = pytest.mark.llm
 
 REPO = Path(__file__).resolve().parents[2]
 MODEL = os.environ.get("DBOT_EVAL_MODEL", "opencode/big-pickle")
-PROVIDER_ERRORS = ("FreeUsageLimit", "rate limit", "RateLimit", "overloaded")
+PROVIDER_ERRORS = ("FreeUsageLimit", "RateLimit", "rate limit", "overloaded")
 
 
 def run_agent(tmp_path: Path, prompt: str) -> tuple[list[str], str]:
-    """Run opencode against dbot's MCP server; return (dbot tool calls, final text)."""
+    """Run opencode against dbot's MCP server; return (tool calls the server received, final text)."""
     opencode = shutil.which("opencode")
     if not os.environ.get("OPENCODE_API_KEY") or not opencode:
         pytest.skip("needs OPENCODE_API_KEY and the opencode CLI")
@@ -34,7 +33,8 @@ def run_agent(tmp_path: Path, prompt: str) -> tuple[list[str], str]:
         "mcp": {
             "dbot": {
                 "type": "local",
-                "command": [sys.executable, "-m", "dbot.server"],
+                # The tap logs each tools/call the server actually receives.
+                "command": [sys.executable, str(Path(__file__).with_name("mcp_tap.py")), str(tmp_path / "calls.log")],
                 "cwd": str(REPO),
                 "enabled": True,
                 "environment": {"PYTHONPATH": str(REPO)},
@@ -57,30 +57,23 @@ def run_agent(tmp_path: Path, prompt: str) -> tuple[list[str], str]:
         timeout=300,
         check=False,
     )
-    calls: list[str] = []
     text = ""
-    errors = [proc.stderr]
+    errors = [line for line in proc.stderr.splitlines() if line.startswith("Error:")]
     for line in proc.stdout.splitlines():
         try:
             event = json.loads(line)
         except json.JSONDecodeError:
             continue
-        part = event.get("part", {})
         if event.get("type") == "error":
             errors.append(json.dumps(event))
-        elif part.get("type") == "tool" and part.get("state", {}).get("status") == "completed":
-            tool = part.get("tool", "")
-            if tool.startswith("dbot_"):  # direct MCP tool
-                calls.append(tool.removeprefix("dbot_"))
-            elif tool == "execute":  # opencode code mode wraps MCP calls in JS
-                calls += re.findall(r"tools\.dbot\.(\w+)\(", part["state"].get("input", {}).get("code", ""))
-        elif part.get("type") == "text":
-            text = part.get("text", "")
-    # Only opencode's own error events and stderr count, never model text or tool output.
+        elif event.get("part", {}).get("type") == "text":
+            text = event["part"].get("text", "")
+    # Skip only on opencode's own error reports, never on model text or tool output.
     if any(e in err for err in errors for e in PROVIDER_ERRORS):
         pytest.skip(f"LLM provider unavailable: {errors[-1][-200:]}")
     assert proc.returncode == 0, proc.stderr[-2000:]
-    return calls, text
+    log = tmp_path / "calls.log"
+    return (log.read_text().split() if log.exists() else []), text
 
 
 def test_agent_discovers_abuseipdb_tool(tmp_path: Path) -> None:
