@@ -1,0 +1,15 @@
+**
+!pyproject.toml
+!uv.lock
+!README.md
+!dbot/
+!content/
+dbot/ui/
+**/__pycache__/
+**/*.pyc
+content/.git
+content/.github
+content/.gitlab
+content/.devcontainer
+content/Tests/
+content/docs/

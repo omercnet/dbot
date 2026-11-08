@@ -44,7 +44,6 @@ Thumbs.db
 
 # Build artifacts
 pip-*
-uv.lock
 uv-*.lock
 node-compile-cache/
 

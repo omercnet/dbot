@@ -1,0 +1,58 @@
+# dbot config (DBOT_CONFIG, default /etc/dbot/dbot.yaml). Copy to dbot.yaml.
+# Secret values: env://NAME (from .env) or file:///run/secrets/name. Anything else is a literal.
+# Sandboxes reach the internet only through the squid egress proxy. dbot sets params.proxy=true on every
+# call when DBOT_EGRESS_PROXY is set, so instances do not need `proxy: true`.
+
+instances:
+  - name: abuseipdb
+    integration: AbuseIPDB
+    params:
+      server: https://api.abuseipdb.com/api/v2/
+      credentials: {password: env://ABUSEIPDB_API_KEY}
+    allow_hosts: [api.abuseipdb.com]
+
+  - name: virustotal
+    integration: VirusTotal (API v3)
+    params:
+      credentials: {password: env://VIRUSTOTAL_API_KEY}
+    allow_hosts: [www.virustotal.com]
+
+  - name: greynoise
+    integration: GreyNoise
+    params:
+      credentials: {password: env://GREYNOISE_API_KEY}
+    allow_hosts: [api.greynoise.io]
+
+  - name: urlscan
+    integration: urlscan.io
+    params:
+      creds_apikey: {password: env://URLSCAN_API_KEY}
+      scan_visibility: private
+      integrationReliability: C - Fairly reliable
+    allow_hosts: [urlscan.io]
+
+  - name: otx
+    integration: AlienVault OTX v2
+    params:
+      url: https://otx.alienvault.com
+      credentials: {password: env://OTX_API_KEY}
+      integrationReliability: C - Fairly reliable
+    allow_hosts: [otx.alienvault.com]
+
+policy:
+  destructive: ["*block*", "*isolate*", "*quarantine*", "*disable*", "*delete*", "*revoke*", "*suspend*", "*unblock*", "*release*", "*-create-*", "*-update-*"]
+  read: ["test-module"]
+
+roles:  # OIDC group -> role
+  viewer: [soc-viewers]
+  analyst: [soc-analysts]
+  approver: [soc-leads]
+
+ingest:
+  sources:
+    generic: {hmac_secret: env://DBOT_INGEST_SECRET}
+
+agent:
+  model: "openai:gpt-5.4-mini"  # any pydantic-ai model string; provider key via .env (e.g. OPENAI_API_KEY)
+  max_tool_calls: 20
+  wall_clock_s: 300

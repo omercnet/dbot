@@ -5,6 +5,8 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  schedule:
+    - cron: "17 3 * * *"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -16,39 +18,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-        with:
-          submodules: true
 
-      - uses: actions/setup-python@v6
+      - uses: astral-sh/setup-uv@v10
         with:
           python-version: "3.13"
-
-      - uses: actions/setup-node@v6
-        with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: dbot/ui/package-lock.json
-
-      - name: Install Python deps
-        run: pip install hatch
-
-      - name: Install Node deps
-        run: npm ci
-        working-directory: dbot/ui
+          enable-cache: true
 
       - name: Ruff check
-        run: hatch run ruff check dbot/ tests/
+        run: uv run ruff check
 
       - name: Ruff format
-        run: hatch run ruff format --check dbot/ tests/
-
-      - name: Biome check
-        run: npm run lint
-        working-directory: dbot/ui
-
-      - name: TypeScript check
-        run: npx tsc -b --noEmit
-        working-directory: dbot/ui
+        run: uv run ruff format --check
 
   typecheck:
     name: Mypy (non-blocking)
@@ -56,18 +36,14 @@ jobs:
     continue-on-error: true
     steps:
       - uses: actions/checkout@v6
-        with:
-          submodules: true
 
-      - uses: actions/setup-python@v6
+      - uses: astral-sh/setup-uv@v10
         with:
           python-version: "3.13"
-
-      - name: Install deps
-        run: pip install hatch
+          enable-cache: true
 
       - name: Mypy
-        run: hatch run typecheck
+        run: uv run mypy dbot/
 
   test:
     name: Test (Python ${{ matrix.python-version }})
@@ -81,72 +57,75 @@ jobs:
         with:
           submodules: true
 
-      - uses: actions/setup-python@v6
+      - uses: astral-sh/setup-uv@v10
         with:
           python-version: ${{ matrix.python-version }}
-          allow-prereleases: true
+          enable-cache: true
 
-      - uses: actions/setup-node@v6
+      - name: Content commit
+        id: content
+        run: echo "sha=$(git rev-parse HEAD:content)" >> "$GITHUB_OUTPUT"
+
+      # Catalog index and assembled scripts are keyed by content commit.
+      - uses: actions/cache@v6
         with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: dbot/ui/package-lock.json
+          path: ~/.cache/dbot
+          key: dbot-cache-${{ steps.content.outputs.sha }}-${{ hashFiles('dbot/catalog/**', 'dbot/sandbox/**') }}
+          restore-keys: dbot-cache-${{ steps.content.outputs.sha }}-
 
-      - name: Install Python deps
-        run: pip install hatch
+      # The ubuntu runner has a docker daemon, so `docker`-marked tests run here.
+      - name: Run tests
+        run: uv run pytest -v
 
-      - name: Install Node deps
-        run: npm ci
-        working-directory: dbot/ui
-
-      - name: Build UI
-        run: npm run build
-        working-directory: dbot/ui
-
-      - name: Run Python tests
-        run: hatch run pytest tests/ -v
-
-  test-ui:
-    name: Test UI (vitest)
+  llm-eval:
+    name: LLM eval (opencode + MCP)
     runs-on: ubuntu-latest
+    # Advisory on PRs and pushes, required nightly.
+    continue-on-error: ${{ github.event_name != 'schedule' }}
+    # Secrets are unavailable to fork and Dependabot PRs; the test skips without the key.
+    env:
+      OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
     steps:
       - uses: actions/checkout@v6
+        with:
+          submodules: true
+
+      - uses: astral-sh/setup-uv@v10
+        with:
+          python-version: "3.13"
+          enable-cache: true
 
       - uses: actions/setup-node@v6
         with:
           node-version: "22"
-          cache: npm
-          cache-dependency-path: dbot/ui/package-lock.json
 
-      - name: Install
-        run: npm ci
-        working-directory: dbot/ui
+      - name: Install opencode
+        run: npm install -g @opencode/cli@2.2.6
 
-      - name: Run frontend tests
-        run: npm run test
-        working-directory: dbot/ui
+      - name: Run LLM eval
+        run: uv run pytest -m llm -v -rs
 
-  build:
-    name: Build UI
+  probe:
+    name: Integration probe (nightly)
+    if: github.event_name == 'schedule'
     runs-on: ubuntu-latest
+    timeout-minutes: 300
     steps:
       - uses: actions/checkout@v6
-
-      - uses: actions/setup-node@v6
         with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: dbot/ui/package-lock.json
+          submodules: true
 
-      - name: Install
-        run: npm ci
-        working-directory: dbot/ui
+      - uses: astral-sh/setup-uv@v10
+        with:
+          python-version: "3.13"
+          enable-cache: true
 
-      - name: Build
-        run: npm run build
-        working-directory: dbot/ui
+      - name: Probe
+        run: uv run python -m dbot.sandbox.probe --json probe.json
 
-      - name: Verify dist
-        run: |
-          test -f dbot/ui/dist/index.html
-          ls -la dbot/ui/dist/assets/
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: probe
+          path: probe.json
+          if-no-files-found: warn

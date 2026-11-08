@@ -1,0 +1,90 @@
+# dbot SOC deployment. Run from deploy/:
+#   cp dbot.yaml.example dbot.yaml && cp oauth2-proxy.cfg.example oauth2-proxy.cfg
+#   create .env (see the env names in dbot.yaml and oauth2-proxy.cfg), then
+#   docker compose run --rm dbot egress write /dev/stdout > allowlist.txt   # squid allowlist from dbot.yaml
+#   sudo install -d -o 10001 /var/cache/dbot
+#   CONTENT_COMMIT=$(git rev-parse HEAD:content) docker compose up -d --build
+#
+# TRUST BOUNDARY: dbot and worker mount the host docker socket to launch integration
+# sandboxes. Anything that controls these containers controls the host's docker daemon,
+# i.e. root on the host. Run this stack on a dedicated host/VM, or point DOCKER_HOST at a
+# remote rootless/sysbox daemon instead of mounting the socket.
+
+x-dbot: &dbot
+  image: ghcr.io/omercnet/dbot:latest
+  build:
+    context: ..
+    dockerfile: deploy/Dockerfile
+    args:
+      DOCKER_GID: ${DOCKER_GID:-999}
+      CONTENT_COMMIT: ${CONTENT_COMMIT:-unknown}
+  restart: unless-stopped
+  env_file:
+    - path: .env
+      required: false
+  environment:
+    DBOT_SANDBOX_NETWORK: dbot-sandbox
+    DBOT_EGRESS_PROXY: http://squid:3128
+    # Only oauth2-proxy may assert X-Forwarded-User/Groups.
+    DBOT_TRUSTED_PROXIES: 172.30.0.2
+  volumes:
+    - /var/run/docker.sock:/var/run/docker.sock
+    - ./dbot.yaml:/etc/dbot/dbot.yaml:ro
+    - dbot-data:/var/lib/dbot
+    # Sandboxes bind-mount assembled scripts from here via the HOST daemon, so the
+    # path must be identical on the host and in the container.
+    - /var/cache/dbot:/var/cache/dbot
+
+services:
+  dbot:
+    <<: *dbot
+    command: ["serve", "--host", "0.0.0.0", "--port", "8080"]
+    # No published ports: reachable only through oauth2-proxy.
+    networks:
+      front:
+        ipv4_address: 172.30.0.3
+      egress: {}
+
+  worker:
+    <<: *dbot
+    command: ["worker"]
+    networks: [egress]
+
+  oauth2-proxy:
+    image: quay.io/oauth2-proxy/oauth2-proxy:v7.15.6
+    restart: unless-stopped
+    command: ["--config=/etc/oauth2-proxy.cfg"]
+    env_file:
+      - path: .env
+        required: false
+    volumes:
+      - ./oauth2-proxy.cfg:/etc/oauth2-proxy.cfg:ro
+    ports:
+      - "4180:4180"
+    networks:
+      front:
+        ipv4_address: 172.30.0.2
+      egress: {}  # reaches the OIDC issuer
+
+  squid:
+    image: ubuntu/squid:6.13-25.04_beta
+    restart: unless-stopped
+    volumes:
+      - ./squid.conf:/etc/squid/squid.conf:ro
+      # Union of instance allow_hosts; edit, then `docker compose kill -s HUP squid`.
+      - ./allowlist.txt:/etc/squid/allowlist.txt:ro
+    networks: [sandbox, egress]
+
+networks:
+  front:
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
+  # Sandboxes join this network (DBOT_SANDBOX_NETWORK). It has no route out; squid is the only exit.
+  sandbox:
+    name: dbot-sandbox
+    internal: true
+  egress: {}
+
+volumes:
+  dbot-data: {}

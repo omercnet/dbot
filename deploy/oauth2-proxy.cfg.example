@@ -1,0 +1,24 @@
+# oauth2-proxy in front of dbot (generic OIDC). Copy to oauth2-proxy.cfg.
+# Secrets come from .env, never this file:
+#   OAUTH2_PROXY_CLIENT_ID, OAUTH2_PROXY_CLIENT_SECRET,
+#   OAUTH2_PROXY_COOKIE_SECRET (python -c 'import os,base64;print(base64.urlsafe_b64encode(os.urandom(32)).decode())')
+
+http_address = "0.0.0.0:4180"
+upstreams = ["http://dbot:8080/"]
+
+provider = "oidc"
+oidc_issuer_url = "https://idp.example.com/realms/soc"
+redirect_url = "https://dbot.example.com/oauth2/callback"
+scope = "openid email profile groups"
+oidc_groups_claim = "groups"
+email_domains = ["*"]
+
+# Sends X-Forwarded-User / X-Forwarded-Email / X-Forwarded-Groups to dbot.
+pass_user_headers = true
+skip_provider_button = true
+
+# Webhooks authenticate with HMAC (X-Dbot-Signature), not OIDC.
+skip_auth_routes = ["POST=^/ingest/"]
+
+cookie_secure = true
+cookie_samesite = "lax"

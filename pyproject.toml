@@ -8,9 +8,9 @@ license = "MIT"
 keywords = ["mcp", "xsoar", "security", "integrations", "demisto"]
 dependencies = [
     "cryptography>=42.0",
-    "fastmcp>=2.0",
+    "fastmcp>=2.10",
     "pydantic>=2.0",
-    "pydantic-ai>=0.1",
+    "pydantic-ai>=1.0",
     "pyyaml>=6.0",
     "typer>=0.12",
     "rich>=13.0",
@@ -19,6 +19,7 @@ dependencies = [
 ]
 
 [project.scripts]
+dbot = "dbot.cli:app"
 dbot-chat = "dbot.agent.cli:chat_app"
 dbot-respond = "dbot.agent.cli:respond_app"
 dbot-watch = "dbot.agent.cli:watch_app"
@@ -33,101 +34,28 @@ Source = "https://github.com/omercnet/dbot"
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
-# ── Hatch version management ──────────────────────────────────────────
-# Reads __version__ from dbot/__init__.py
-# Bump with: hatch version minor | major | patch | 0.2.0
-
 [tool.hatch.version]
 path = "dbot/__init__.py"
 
-# ── Hatch environments ────────────────────────────────────────────────
-
-# Default dev environment — testing + linting
-[tool.hatch.envs.default]
-dependencies = [
+[dependency-groups]
+dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
     "pytest-cov>=5.0",
-    "pytest-subtests>=0.13",
     "ruff>=0.11",
     "mypy>=1.10",
-    "pre-commit>=4.0",
     "dateparser>=1.0",
 ]
-
-[tool.hatch.envs.default.scripts]
-test = "pytest {args:tests/} -v"
-test-quick = "pytest tests/ -q --ignore=tests/integrations"
-cov = "pytest tests/ --cov=dbot --cov-report=term-missing --cov-report=html {args}"
-lint = [
-    "ruff check dbot/ tests/",
-    "ruff format --check dbot/ tests/",
-]
-lint-ui = "npm run --prefix dbot/ui check"
-fmt = [
-    "ruff check --fix dbot/ tests/",
-    "ruff format dbot/ tests/",
-]
-fmt-ui = "npm run --prefix dbot/ui lint:fix"
-typecheck = "mypy dbot/"
-build-ui = "npm run --prefix dbot/ui build"
-test-ui = "npm run --prefix dbot/ui test"
-dev = "npm run --prefix dbot/ui build && dbot-web"
-dev-api = "dbot-web"
-check = [
-    "lint",
-    "lint-ui",
-    "test-quick",
-    "test-ui",
-]
-check-strict = [
-    "lint",
-    "lint-ui",
-    "typecheck",
-    "test-quick",
-    "test-ui",
-]
-ci = [
-    "lint",
-    "lint-ui",
-    "typecheck",
-    "build-ui",
-    "test",
-]
-hooks = "pre-commit install"
-
-# Test matrix — run across Python versions
-[tool.hatch.envs.test]
-dependencies = [
-    "pytest>=8.0",
-    "pytest-asyncio>=0.23",
-    "pytest-cov>=5.0",
-    "dateparser>=1.0",
-]
-
-[tool.hatch.envs.test.scripts]
-run = "pytest {args:tests/} -v"
-cov = "pytest tests/ --cov=dbot --cov-report=term-missing {args}"
-
-[[tool.hatch.envs.test.matrix]]
-python = ["3.13", "3.14"]
-
-# Types environment — isolated mypy
-[tool.hatch.envs.types]
-dependencies = [
-    "mypy>=1.10",
-    "pydantic>=2.0",
-    "pyyaml>=6.0",
-]
-
-[tool.hatch.envs.types.scripts]
-check = "mypy dbot/ {args}"
 
 # ── Ruff ──────────────────────────────────────────────────────────────
 
 [tool.ruff]
 target-version = "py313"
 line-length = 120
+extend-exclude = ["content"]
+
+[tool.ruff.format]
+exclude = ["*.md"]  # docs code blocks are illustrative, not formatted source
 
 [tool.ruff.lint]
 select = [
@@ -186,7 +114,13 @@ fixture-parentheses = false
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
+addopts = "-m 'not llm'"
+markers = [
+    "docker: needs a docker daemon; skips itself when docker is unavailable",
+    "llm: real-LLM evals via the opencode CLI (run with -m llm; needs OPENCODE_API_KEY)",
+]
 
 # ── Mypy ──────────────────────────────────────────────────────────────
 
