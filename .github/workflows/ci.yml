@@ -150,3 +150,28 @@ jobs:
         run: |
           test -f dbot/ui/dist/index.html
           ls -la dbot/ui/dist/assets/
+
+  llm-eval:
+    name: LLM eval (opencode + MCP)
+    runs-on: ubuntu-latest
+    # Secrets are unavailable to fork and Dependabot PRs; the test skips without the key.
+    env:
+      OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: true
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+
+      - name: Install deps
+        run: pip install hatch && npm install -g @opencode/cli@2.2.6
+
+      - name: Run LLM eval
+        run: hatch run pytest -m llm -v -rs

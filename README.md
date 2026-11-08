@@ -190,7 +190,8 @@ Open `http://localhost:7932` for the production build (after `hatch run build-ui
 |---|---|
 | `hatch run dev` | Build UI + start server (production-like) |
 | `hatch run dev-api` | Start Python server only (pair with `npm run dev`) |
-| `hatch run test` | Full Python test suite (307 tests) |
+| `hatch run test` | Full Python test suite (excludes LLM evals) |
+| `hatch run pytest -m llm` | Real-LLM eval: opencode CLI drives the MCP server (needs `OPENCODE_API_KEY`) |
 | `hatch run test-quick` | Skip integration tests |
 | `hatch run test-ui` | Frontend tests (vitest) |
 | `hatch run lint` | ruff check + format |

@@ -187,6 +187,8 @@ fixture-parentheses = false
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+addopts = "-m 'not llm'"
+markers = ["llm: real-LLM evals via the opencode CLI (run with -m llm; needs OPENCODE_API_KEY)"]
 
 # ── Mypy ──────────────────────────────────────────────────────────────
 
