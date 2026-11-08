@@ -19,6 +19,11 @@ REPO = Path(__file__).resolve().parents[2]
 MODEL = os.environ.get("DBOT_EVAL_MODEL", "opencode/big-pickle")
 PROVIDER_UNAVAILABLE = ("FreeUsageLimit", "RateLimit", "rate_limit", "overloaded")
 ATTEMPTS = 3  # free models are nondeterministic; pass if any attempt passes
+# opencode 2.2.6 built-ins that touch the host or the network.
+HOST_TOOLS = (
+    "shell", "bash", "read", "glob", "grep", "edit", "write", "patch", "webfetch", "websearch", "browser",
+    "subagent", "task", "skill", "schedule",
+)  # fmt: skip
 
 
 def provider_unavailable(stdout: str) -> str | None:
@@ -63,12 +68,14 @@ def run_agent(tmp_path: Path, prompt: str) -> tuple[list[str], str, list[str]]:
                 "timeout": 60000,
             }
         },
-        "permission": {"bash": "deny", "edit": "deny", "webfetch": "deny"},
+        # Only dbot's MCP tools; no host or network access of any kind.
+        "permission": dict.fromkeys(HOST_TOOLS, "deny"),
     }
     (project / "opencode.json").write_text(json.dumps(config))
-    # Isolated HOME so only OPENCODE_API_KEY authenticates, never a developer's login.
+    # Isolated HOME so only OPENCODE_API_KEY authenticates, never a developer's login. opencode takes its project
+    # directory from PWD, not the process cwd: without this it runs in the caller's checkout with its config.
     xdg = ("HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME")
-    home = {k: str(tmp_path / k) for k in xdg}
+    home = {k: str(tmp_path / k) for k in xdg} | {"PWD": str(project)}
     proc = subprocess.run(  # noqa: S603
         [opencode, "run", "--standalone", "--auto", "-m", MODEL, "--format", "json", prompt],
         cwd=project,
@@ -94,6 +101,9 @@ def run_agent(tmp_path: Path, prompt: str) -> tuple[list[str], str, list[str]]:
         elif part.get("type") == "tool":
             state = part.get("state", {})
             tools.append(f"{part.get('tool')}:{state.get('status')}:{str(state.get('output'))[:120]}")
+    # The agent gets dbot's MCP tools only; a completed host tool is a harness bug, not model flakiness.
+    leaked = [t for t in tools if t.split(":", 1)[0] in HOST_TOOLS and ":completed:" in t]
+    assert not leaked, f"opencode ran a denied host tool: {leaked}"
     assert proc.returncode == 0, proc.stdout[-2000:] + proc.stderr[-2000:]
     log = tmp_path / "calls.log"
     return (log.read_text().split() if log.exists() else []), text, tools
