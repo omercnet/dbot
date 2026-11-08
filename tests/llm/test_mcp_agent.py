@@ -76,15 +76,18 @@ def run_agent(tmp_path: Path, prompt: str) -> tuple[list[str], str, list[str]]:
     # directory from PWD, not the process cwd: without this it runs in the caller's checkout with its config.
     xdg = ("HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME")
     home = {k: str(tmp_path / k) for k in xdg} | {"PWD": str(project)}
-    proc = subprocess.run(  # noqa: S603
-        [opencode, "run", "--standalone", "--auto", "-m", MODEL, "--format", "json", prompt],
-        cwd=project,
-        env={**os.environ, **home},
-        capture_output=True,
-        text=True,
-        timeout=300,
-        check=False,
-    )
+    try:
+        proc = subprocess.run(  # noqa: S603
+            [opencode, "run", "--standalone", "--auto", "-m", MODEL, "--format", "json", prompt],
+            cwd=project,
+            env={**os.environ, **home},
+            capture_output=True,
+            text=True,
+            timeout=300,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        return [], "opencode timed out after 300s", []  # a failed attempt; later attempts may pass
     (tmp_path / "opencode.jsonl").write_text(proc.stdout + proc.stderr)
     reason = provider_unavailable(proc.stdout)
     if reason:
@@ -104,7 +107,8 @@ def run_agent(tmp_path: Path, prompt: str) -> tuple[list[str], str, list[str]]:
     # The agent gets dbot's MCP tools only; a completed host tool is a harness bug, not model flakiness.
     leaked = [t for t in tools if t.split(":", 1)[0] in HOST_TOOLS and ":completed:" in t]
     assert not leaked, f"opencode ran a denied host tool: {leaked}"
-    assert proc.returncode == 0, proc.stdout[-2000:] + proc.stderr[-2000:]
+    if proc.returncode != 0:  # e.g. the model sent a malformed tool call: a failed attempt, not a harness error
+        text = f"opencode exited {proc.returncode}: {proc.stderr[-500:]}"
     log = tmp_path / "calls.log"
     return (log.read_text().split() if log.exists() else []), text, tools
 
