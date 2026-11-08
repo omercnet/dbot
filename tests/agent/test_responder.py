@@ -7,10 +7,10 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from pydantic_ai.messages import ModelMessage, ModelRequest, ModelResponse, ToolCallPart, ToolReturnPart
+from pydantic_ai.messages import ModelMessage, ModelRequest, ModelResponse, TextPart, ToolCallPart, ToolReturnPart
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 
-from dbot.agent.responder import Budget, respond
+from dbot.agent.responder import Budget, ResponderError, respond
 from dbot.catalog import Catalog
 from dbot.catalog.models import ArgDef, CommandDef, IntegrationDef
 from dbot.control.approvals import Approvals
@@ -87,6 +87,8 @@ class Script:
         step = self.steps[min(n, len(self.steps) - 1)]
         if callable(step):
             step = step(self, info)
+        if isinstance(step, ModelResponse):
+            return step
         if isinstance(step, dict):
             return ModelResponse(parts=[ToolCallPart(info.output_tools[0].name, step)])
         return ModelResponse(parts=[ToolCallPart(name, args) for name, args in step])
@@ -106,11 +108,7 @@ def enrich_steps() -> list[Any]:
 
 async def test_enriches_observables_and_reports_evidence(tmp_path: Path) -> None:
     gateway, sandbox, config = make_gateway(tmp_path)
-    evidence = [
-        {"instance": "abuse", "command": "ip", "args": {"ip": "1.2.3.4"}, "finding": "score 97", "status": "ok"},
-        {"instance": "otx", "command": "domain", "args": {"domain": "evil.example"}, "finding": "score 97"},
-    ]
-    script = Script(*enrich_steps(), final(evidence=evidence))
+    script = Script(*enrich_steps(), final())
 
     report = await respond(ALERT, gateway, config, alert_id="a1", model=script.model)
 
@@ -127,11 +125,45 @@ async def test_enriches_observables_and_reports_evidence(tmp_path: Path) -> None
     assert "old" not in re.findall(r"^- (\w+) ", script.instructions[0], re.M)
     assert report.alert_id == "a1"
     assert report.verdict == "malicious"
-    assert {(e.instance, e.command) for e in report.evidence} == {("abuse", "ip"), ("otx", "domain")}
+    assert [(e.instance, e.command, e.args, e.status, e.finding) for e in report.evidence] == [
+        ("abuse", "ip", {"ip": "1.2.3.4"}, "ok", 'ip {"ip": "1.2.3.4"}: score 97'),
+        ("otx", "domain", {"domain": "evil.example"}, "ok", 'domain {"domain": "evil.example"}: score 97'),
+    ]
     assert report.actions_pending == []
     assert report.actions_taken == []
     assert report.errors == []
     assert "## Evidence" in report.to_markdown()
+
+
+async def test_evidence_is_what_the_gateway_returned_not_what_the_model_claims(tmp_path: Path) -> None:
+    gateway, sandbox, config = make_gateway(tmp_path)
+    fake = {"instance": "otx", "command": "domain", "args": {"domain": "x"}, "finding": "C2 confirmed", "status": "ok"}
+    # One real invoke; the final answer claims a different, fabricated finding.
+    script = Script(enrich_steps()[0][:1], final(evidence=[fake]))
+
+    report = await respond(ALERT, gateway, config, alert_id="a1", model=script.model)
+
+    assert len(sandbox.calls) == 1
+    assert [(e.instance, e.command, e.finding) for e in report.evidence] == [
+        ("abuse", "ip", 'ip {"ip": "1.2.3.4"}: score 97')
+    ]
+    assert "C2 confirmed" not in json.dumps([e.model_dump() for e in report.evidence])
+
+
+async def test_evidence_survives_a_model_that_never_answers(tmp_path: Path) -> None:
+    gateway, _, config = make_gateway(tmp_path)
+    # Enriches, then answers in plain text forever: output retries run out and the run fails.
+    script = Script(*enrich_steps(), lambda s, info: ModelResponse(parts=[TextPart("it is malicious")]))
+
+    with pytest.raises(ResponderError) as exc:
+        await respond(ALERT, gateway, config, alert_id="a1", model=script.model)
+
+    report = exc.value.report
+    assert report.verdict == "inconclusive"
+    assert [(e.instance, e.command, e.status) for e in report.evidence] == [
+        ("abuse", "ip", "ok"),
+        ("otx", "domain", "ok"),
+    ]
 
 
 async def test_pending_is_reported_even_if_model_omits_it(tmp_path: Path) -> None:
@@ -332,9 +364,7 @@ async def test_secret_args_are_masked_in_the_report(tmp_path: Path) -> None:
         "args": {"user": "u1", "password": secret},
         "reason": "r",
     }
-    # The model also copies the secret into its own evidence list.
-    claimed = {"instance": "dir", "command": "dir-get-user", "args": {"user": "u1", "token": secret}, "finding": "x"}
-    script = Script([("invoke", read), ("invoke", write)], final(evidence=[claimed]))
+    script = Script([("invoke", read), ("invoke", write)], final())
 
     report = await respond(ALERT, gateway, config, alert_id="a1", model=script.model)
 

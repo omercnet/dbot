@@ -88,7 +88,11 @@ The host maps that line to a `CommandResult`:
    `Actor(id="agent:responder", kind="agent", roles={"analyst"}, on_behalf_of="alert:<id>")`. It is limited by
    `agent.max_tool_calls` and `agent.wall_clock_s`.
 3. The worker stores the resulting `IRReport` (verdict, confidence, summary, evidence, actions taken, actions
-   pending, errors). The alert becomes `done`, or `waiting_approval` if any action is pending, or `failed`.
+   pending, errors). The model writes only the verdict, confidence and summary. dbot fills in the rest from what the
+   gateway returned during the run: one evidence entry per executed or denied `invoke` (instance, command, masked
+   args, status, and an excerpt of the result or error), plus the actions taken and pending. If the model fails or
+   runs out of budget, the report is `inconclusive` with the evidence collected so far. The alert becomes `done`,
+   or `waiting_approval` if any action is pending, or `failed`.
 4. When an approver decides one of the alert's approvals on `/approvals`, the web app requeues the alert. On the
    next run, the responder executes the approved action exactly once and updates the report.
 

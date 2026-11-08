@@ -1,4 +1,4 @@
-"""IRReport: the responder's structured output (C9)."""
+"""IRReport: the responder's report (C9). The model writes only the Assessment; dbot fills in the rest."""
 
 import json
 from typing import Any, Literal
@@ -6,6 +6,14 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 Verdict = Literal["benign", "suspicious", "malicious", "inconclusive"]
+
+
+class Assessment(BaseModel):
+    """The model's final answer. Evidence and actions come from the gateway, never from the model."""
+
+    verdict: Verdict = Field(description="One of: benign, suspicious, malicious, inconclusive.")
+    confidence: float = Field(ge=0.0, le=1.0, description="How sure you are of the verdict, from 0 to 1.")
+    summary: str = Field(description="Two or three sentences: what the tool results showed and why the verdict.")
 
 
 class Evidence(BaseModel):

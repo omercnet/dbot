@@ -11,8 +11,9 @@ from pydantic_ai.exceptions import UsageLimitExceeded
 from pydantic_ai.models import Model
 from pydantic_ai.usage import UsageLimits
 
-from dbot.agent.report import ActionTaken, Evidence, IRReport, PendingAction
+from dbot.agent.report import ActionTaken, Assessment, Evidence, IRReport, PendingAction
 from dbot.control.config import DbotConfig
+from dbot.control.secrets import REDACTED
 from dbot.gateway import Actor, Denied, Gateway, Pending
 from dbot.sandbox.types import CommandResult
 
@@ -25,15 +26,15 @@ You are a SOC incident responder working one alert. Work in this order:
 1. Triage: read the alert and list its observables (ips, domains, urls, hashes, emails, users, hosts).
 2. Enrich every observable with read-tier commands on the configured instances below. Use search_tools and
    get_tool_schema to find commands, then invoke(instance, command, args, reason).
-3. Decide a verdict (benign, suspicious, malicious, inconclusive) with a confidence between 0 and 1. Cite evidence:
-   one entry per invoke you relied on, with its instance, command, args, status and what it showed.
+3. Decide a verdict (benign, suspicious, malicious, inconclusive) with a confidence between 0 and 1, based only on
+   the invoke results. dbot records those results as the report's evidence; you do not list them.
 4. Only if the verdict is malicious and confidence >= 0.8, propose destructive containment (block, isolate,
    disable, ...) by invoking it. Destructive commands return approval_required; that is expected, do not retry.
    Actions approved in an earlier run have already been executed for you; their outcomes are listed below. Use them
    to update the verdict and summary, and do not invoke them again.
-5. Finish by calling the final_result tool with the report. Do not answer in plain text.
-Never invent tool results: every finding must come from an invoke result in this run. If a tool says the budget is
-exhausted, stop calling tools and return the report with what you have.
+5. Finish by calling the final_result tool with verdict, confidence and summary. Do not answer in plain text.
+Never invent tool results: the summary must only state what invoke results in this run showed. If a tool says the
+budget is exhausted, stop calling tools and call final_result with what you have.
 """
 
 
@@ -71,11 +72,12 @@ class ResponderDeps:
     resumed: list[str] = field(default_factory=list)  # prompt lines: outcomes of earlier approvals
 
 
-responder: Agent[ResponderDeps, IRReport] = Agent(
+responder: Agent[ResponderDeps, Assessment] = Agent(
     deps_type=ResponderDeps,
-    output_type=IRReport,
+    output_type=Assessment,
     instructions=INSTRUCTIONS,
     name="dbot-responder",
+    retries={"output": 3},  # one malformed final answer from a small model must not sink the alert
 )
 
 
@@ -207,7 +209,12 @@ async def invoke(
         )
         return {"status": out.status, "reason": out.reason}
     view = compact(out)
-    finding = (view.get("error") or view.get("human_readable") or "")[:500]
+    finding = view.get("error") or view.get("human_readable") or ""
+    # The report is stored and shown to viewers: drop secret arg values that the integration echoed back.
+    for key, value in args.items():
+        if isinstance(value, str) and value and shown.get(key) != value:
+            finding = finding.replace(value, REDACTED)
+    finding = finding[:500]
     deps.evidence.append(Evidence(instance=instance, command=command, args=shown, finding=finding, status=out.status))
     if approval_id is not None:  # the approval was consumed, so the action ran whatever its status
         deps.taken.append(
@@ -307,22 +314,22 @@ async def respond(
     await _execute_approved(deps)
     # Requests are bounded too, so a model that ignores budget errors cannot loop forever.
     limits = UsageLimits(request_limit=config.agent.max_tool_calls + 5)
-    report: IRReport | None = None
+    assessment: Assessment | None = None
     failure: Exception | None = None
     try:
         async with asyncio.timeout(config.agent.wall_clock_s + 30):
             result = await responder.run(
                 _prompt(alert), deps=deps, model=model or config.agent.model, usage_limits=limits
             )
-        report = result.output
+        assessment = result.output
     except (UsageLimitExceeded, TimeoutError) as e:
         deps.errors.append(f"responder stopped: {type(e).__name__}: {e}")
     except Exception as e:
         # Approved actions may already have run; the caller must still be able to store what happened.
         failure = e
         deps.errors.append(f"{type(e).__name__}: {e}")
-    if report is None:
-        report = IRReport(
+    if assessment is None:
+        assessment = Assessment(
             verdict="inconclusive",
             confidence=0.0,
             summary=(
@@ -330,7 +337,6 @@ async def respond(
                 if failure
                 else "The responder did not finish; evidence below is what it collected."
             ),
-            evidence=deps.evidence,
         )
     # Actions come from what the gateway actually returned, never from the model's claims.
     taken = (previous.actions_taken if previous else []) + deps.taken
@@ -344,21 +350,17 @@ async def respond(
             and all(p.approval_id != pa.approval_id for p in pending)
         ):
             pending.append(pa)
-    errors = list(report.errors) + deps.errors
+    errors = list(deps.errors)
     if budget.exhausted:
         errors.append(f"tool budget exhausted after {budget.calls} calls")
-    # The model writes its own evidence list; mask its args the same way, since it may copy a secret arg into it.
-    evidence = [
-        e.model_copy(update={"args": gateway.mask_args(e.instance, e.command, e.args)}) for e in report.evidence
-    ]
-    final = report.model_copy(
-        update={
-            "alert_id": alert_id,
-            "evidence": evidence,
-            "actions_taken": taken,
-            "actions_pending": pending,
-            "errors": errors,
-        }
+    # Evidence, like actions, is what the gateway returned to invoke in this run (args already masked).
+    final = IRReport(
+        alert_id=alert_id,
+        **assessment.model_dump(),
+        evidence=deps.evidence,
+        actions_taken=taken,
+        actions_pending=pending,
+        errors=errors,
     )
     if failure is not None:
         raise ResponderError(final) from failure
