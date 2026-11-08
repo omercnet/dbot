@@ -91,7 +91,7 @@ class ResponderAgent:
         self._agent: Agent[IRDeps, str | DeferredToolRequests] = Agent(
             model_name,
             system_prompt=RESPONDER_SYSTEM_PROMPT,
-            toolsets=[toolset],  # type: ignore[list-item]
+            toolsets=[toolset],
             output_type=str | DeferredToolRequests,  # type: ignore[arg-type]
             deps_type=IRDeps,
         )

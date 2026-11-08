@@ -147,7 +147,7 @@ def create_app(
         agent: Agent[IRDeps, str] = Agent(
             default_model,
             instructions=CHAT_INSTRUCTIONS,
-            toolsets=[toolset],  # type: ignore[list-item]
+            toolsets=[toolset],
             output_type=str,
             deps_type=IRDeps,
             model_settings=ModelSettings(parallel_tool_calls=False),
