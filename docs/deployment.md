@@ -35,7 +35,8 @@ OAUTH2_PROXY_CLIENT_SECRET=...
 OAUTH2_PROXY_COOKIE_SECRET=...
 EOF
 chmod 600 .env
-docker compose run --rm dbot egress write /dev/stdout > allowlist.txt   # squid allowlist from dbot.yaml
+chmod 644 dbot.yaml                     # read by uid 10001 in the container; holds env:// refs, not secrets
+docker compose run --rm dbot egress write - > allowlist.txt && chmod 644 allowlist.txt   # squid allowlist
 sudo install -d -o 10001 /var/cache/dbot
 CONTENT_COMMIT=$(git rev-parse HEAD:content) docker compose up -d --build
 docker compose run --rm dbot config check
@@ -69,7 +70,8 @@ and restart `dbot` and `worker`.
 
 `deploy/squid.conf` denies by default. It allows CONNECT only to port 443, allows only the hosts in `allowlist.txt`,
 and denies private, loopback and link-local destinations (which includes cloud metadata endpoints). It does not
-cache, and it strips `X-Forwarded-For`. The access log goes to stdout (`docker compose logs squid`).
+cache, and it strips `X-Forwarded-For`. The access log (every CONNECT, with the sandbox address) is
+`/var/log/squid/access.log` inside the squid container; mount a volume there to keep it.
 
 ## Trust boundary
 
@@ -90,6 +92,7 @@ All variables that dbot reads (from `grep os.environ dbot/`):
 | `DBOT_CONTENT_COMMIT` | from `git` in the content root | catalog, assembly | cache key when the content checkout has no `.git` (set from the `CONTENT_COMMIT` build arg) |
 | `DBOT_SANDBOX_NETWORK` | none (warns: unrestricted egress) | sandbox | docker network for integration containers (`dbot-sandbox`) |
 | `DBOT_EGRESS_PROXY` | none | gateway | `HTTPS_PROXY`/`HTTP_PROXY` for sandboxes; also forces `params.proxy = true` |
+| `DBOT_SANDBOX_CA_BUNDLE` | none | gateway | PEM file mounted read-only into sandboxes as `REQUESTS_CA_BUNDLE` (replaces the image's trust store); for a TLS-intercepting egress proxy |
 | `DBOT_TRUSTED_PROXIES` | `127.0.0.1` | web | comma-separated IPs/CIDRs allowed to assert `X-Forwarded-User/Groups` |
 | `DBOT_CSRF_SECRET` | random per process | web | CSRF token key; set it, or approval forms break on restart |
 | `DBOT_MCP_ROLES` | `analyst` | mcp | comma-separated roles of the `agent:mcp` actor |

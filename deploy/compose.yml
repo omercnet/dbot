@@ -80,6 +80,9 @@ networks:
     ipam:
       config:
         - subnet: 172.30.0.0/24
+          # Dynamic addresses come only from .128/25, so no other container can take the
+          # trusted proxy address (172.30.0.2) while oauth2-proxy is down.
+          ip_range: 172.30.0.128/25
   # Sandboxes join this network (DBOT_SANDBOX_NETWORK). It has no route out; squid is the only exit.
   sandbox:
     name: dbot-sandbox
