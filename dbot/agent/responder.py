@@ -31,7 +31,7 @@ You are a SOC incident responder working one alert. Work in this order:
    disable, ...) by invoking it. Destructive commands return approval_required; that is expected, do not retry.
    Actions approved in an earlier run have already been executed for you; their outcomes are listed below. Use them
    to update the verdict and summary, and do not invoke them again.
-5. Finish by returning the report.
+5. Finish by calling the final_result tool with the report. Do not answer in plain text.
 Never invent tool results: every finding must come from an invoke result in this run. If a tool says the budget is
 exhausted, stop calling tools and return the report with what you have.
 """
@@ -141,10 +141,14 @@ def search_tools(ctx: RunContext[ResponderDeps], query: str) -> Any:
         if inst.get("enabled", True) and not inst.get("problem"):
             by_integration.setdefault(inst["integration"], []).append(inst["name"])
     results = []
-    for hit in ctx.deps.gateway.catalog.search(query, limit=SEARCH_LIMIT):
+    # Rank the whole catalog, then keep configured integrations: cutting to SEARCH_LIMIT first would let a generic
+    # query's top hits on unconfigured integrations hide every configured command.
+    for hit in ctx.deps.gateway.catalog.search(query, limit=ctx.deps.gateway.catalog.stats["total_commands"]):
         instances = by_integration.get(hit["integration"], [])
         if instances:
             results.append({**hit, "instances": instances})
+            if len(results) == SEARCH_LIMIT:
+                break
     return results
 
 
@@ -168,7 +172,8 @@ async def invoke(
     reason: str,
     approval_id: str | None = None,
 ) -> Any:
-    """Run a command on a configured instance. Destructive commands need an approved approval_id."""
+    """Run a command on a configured instance. `command` is the command part of a search_tools tool_name (for
+    `AbuseIPDB.ip` it is `ip`). Destructive commands need an approved approval_id."""
     deps = ctx.deps
     if err := deps.budget.spend():
         return {"error": err}

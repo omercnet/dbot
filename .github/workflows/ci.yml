@@ -77,14 +77,14 @@ jobs:
         run: uv run pytest -v
 
   llm-eval:
-    name: LLM eval (opencode + MCP)
+    name: LLM eval (ollama + MCP)
     runs-on: ubuntu-latest
-    # Advisory on PRs and pushes, required nightly.
-    continue-on-error: ${{ github.event_name != 'schedule' }}
-    timeout-minutes: 90
-    # Secrets are unavailable to fork and Dependabot PRs; the test skips without the key.
+    timeout-minutes: 45
     env:
-      OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+      OLLAMA_VERSION: "0.40.15"
+      OLLAMA_MODEL: granite4:3b
+      OLLAMA_BASE_URL: http://127.0.0.1:11434/v1
+      DBOT_EVAL_MODEL: ollama:granite4:3b
     steps:
       - uses: actions/checkout@v6
         with:
@@ -95,19 +95,42 @@ jobs:
           python-version: "3.13"
           enable-cache: true
 
-      - uses: actions/setup-node@v6
+      - name: Install dependencies
+        run: uv sync --dev
+
+      # CPU-only: the release tarball minus its CUDA and Vulkan backends, unpacked into the runner user's home.
+      - name: Install ollama
+        run: |
+          mkdir -p "$HOME/.local/ollama"
+          curl -fsSL "https://github.com/ollama/ollama/releases/download/v${OLLAMA_VERSION}/ollama-linux-amd64.tar.zst" \
+            | tar --zstd -x -C "$HOME/.local/ollama" --exclude='lib/ollama/cuda_*' --exclude='lib/ollama/vulkan'
+          echo "$HOME/.local/ollama/bin" >> "$GITHUB_PATH"
+
+      - uses: actions/cache@v6
         with:
-          node-version: "22"
+          path: ~/.ollama/models
+          key: ollama-models-${{ env.OLLAMA_MODEL }}-${{ env.OLLAMA_VERSION }}
 
-      - name: Install opencode
-        run: npm install -g @opencode/cli@2.2.6
+      # Runs as the runner user, so models live in ~/.ollama. The OpenAI-compatible API ignores num_ctx.
+      - name: Start ollama
+        run: |
+          OLLAMA_CONTEXT_LENGTH=8192 nohup ollama serve > "$RUNNER_TEMP/ollama.log" 2>&1 &
+          for _ in $(seq 30); do
+            curl -fs http://127.0.0.1:11434/api/version && exit 0
+            sleep 1
+          done
+          cat "$RUNNER_TEMP/ollama.log"
+          exit 1
 
-      # opencode -> dbot MCP server -> real Gateway -> DockerSandbox -> mitmdump replaying tests/certified fixtures.
-      # The runner's docker daemon and the dev group's mitmproxy are all the eval needs besides opencode.
+      - name: Pull model
+        run: ollama pull "$OLLAMA_MODEL"
+
+      # pydantic-ai on ollama -> dbot MCP server / responder -> real Gateway -> DockerSandbox -> mitmdump replaying
+      # tests/certified fixtures. The runner's docker daemon and the dev group's mitmproxy are all it needs.
       - name: Run LLM eval
         run: uv run pytest -m llm tests/llm -v -rs --basetemp="$RUNNER_TEMP/llm-eval"
 
-      # Per-attempt opencode events, tap logs (tools/call received) and gateway audit JSONL. No secrets:
+      # Per-attempt model messages, tap logs (tools/call received), gateway audit JSONL and IR reports. No secrets:
       # the audit is redacted and instances use the replay proxy's fake keys.
       - uses: actions/upload-artifact@v7
         if: always()
@@ -115,7 +138,9 @@ jobs:
           name: llm-eval
           path: |
             ${{ runner.temp }}/llm-eval/**/*.jsonl
+            ${{ runner.temp }}/llm-eval/**/report.json
             ${{ runner.temp }}/llm-eval/**/mitmdump.log
+            ${{ runner.temp }}/ollama.log
           if-no-files-found: ignore
 
   probe:

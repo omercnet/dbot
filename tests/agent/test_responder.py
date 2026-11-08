@@ -169,6 +169,43 @@ async def test_budget_exhausted_tools_error_and_report_still_returned(tmp_path: 
     assert any("budget exhausted" in e for e in report.errors)
 
 
+async def test_search_tools_finds_configured_command_behind_unconfigured_hits(tmp_path: Path) -> None:
+    # Many unconfigured integrations outrank the one configured `ip` command for the generic query "ip".
+    others = [
+        IntegrationDef(
+            pack=f"IpFeed{c}",
+            name=f"IpFeed{c}",
+            py_path=f"/x/{c}.py",
+            description="ip reputation",
+            commands=[CommandDef(name="ip", description="ip lookup", args=[ArgDef(name="ip")])],
+        )
+        for c in "ABCDEFGHIJKLMNOP"
+    ]
+    abuse = IntegrationDef(pack="AbuseIPDB", name="AbuseIPDB", py_path="/x/a.py", commands=[CommandDef(name="ip")])
+    catalog = Catalog([*others, abuse])
+    assert all(h["integration"] != "AbuseIPDB" for h in catalog.search("ip", limit=10))  # the precondition
+    config = DbotConfig(
+        instances=[InstanceConfig(name="abuse", integration="AbuseIPDB")],
+        agent=AgentConfig(model="test", max_tool_calls=5, wall_clock_s=60),
+    )
+    gateway = Gateway(config, catalog, FakeSandbox(), Approvals(tmp_path / "dbot.db"), AuditLog(tmp_path / "audit"))
+    script = Script([("search_tools", {"query": "ip"})], final(verdict="inconclusive"))
+
+    await respond(ALERT, gateway, config, model=script.model)
+
+    assert script.returns[0] == [
+        {
+            "tool_name": "AbuseIPDB.ip",
+            "integration": "AbuseIPDB",
+            "display": abuse.display,
+            "pack": "AbuseIPDB",
+            "description": "",
+            "dangerous": False,
+            "instances": ["abuse"],
+        }
+    ]
+
+
 async def test_model_ignoring_budget_still_yields_report(tmp_path: Path) -> None:
     gateway, sandbox, config = make_gateway(tmp_path, max_tool_calls=1)
     call = ("invoke", {"instance": "abuse", "command": "ip", "args": {"ip": "1.2.3.4"}, "reason": "r"})

@@ -169,6 +169,7 @@ Use `--data-binary` (not `-d`) so curl sends exactly the bytes you signed.
 ## Agent
 
 `agent.model` is any [pydantic-ai](https://ai.pydantic.dev/models/) model string. Set the provider's key in the
-worker's environment (for example `OPENAI_API_KEY` or `ANTHROPIC_API_KEY`). Every tool call (`search_tools`,
+worker's environment (for example `OPENAI_API_KEY` or `ANTHROPIC_API_KEY`). For an air-gapped responder, use
+`ollama:<model>` with `OLLAMA_BASE_URL` (for example `http://127.0.0.1:11434/v1`). Every tool call (`search_tools`,
 `get_tool_schema`, `invoke`) counts against `max_tool_calls`. When the budget or `wall_clock_s` runs out, the
 responder stops calling tools and still writes a report.

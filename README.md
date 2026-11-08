@@ -7,7 +7,7 @@ approval, and writes a hash-chained audit log.
 
 You can reach the gateway in two ways:
 
-- **MCP**: `dbot mcp` serves the integrations as MCP tools over stdio, for Claude, opencode or any other MCP client.
+- **MCP**: `dbot mcp` serves the integrations as MCP tools over stdio, for Claude or any other MCP client.
 - **Responder**: signed webhook alerts go into a queue. A pydantic-ai agent enriches each one through the gateway and
   writes an IR report with a verdict, evidence, the actions it took, and the actions waiting for approval.
 
@@ -143,11 +143,26 @@ but has not been certified. `dbot probe` reports which ones reach `main()` in th
 uv sync
 uv run pytest                      # unit tests; docker-marked tests skip without a daemon
 uv run pytest -m docker            # only the tests that need a docker daemon
-uv run pytest -m llm               # real-LLM eval via opencode + MCP (needs OPENCODE_API_KEY)
+uv run pytest -m llm               # real-LLM eval on a local ollama model (see below)
 uv run ruff check . && uv run ruff format --check .
 uv run mypy dbot
 uv run dbot probe --limit 20       # run a nonexistent command in each integration's image
 ```
+
+The real-LLM eval drives the MCP server (S1 discovery, S2 enrichment, S3 approval enforcement) and the alert
+responder (S4) with a pydantic-ai agent on a local ollama model, through the real gateway and sandboxes against a
+replay proxy. It needs docker and ollama with the model pulled, and skips only if ollama is unreachable or the model
+is missing. CI runs it on every PR and push.
+
+```bash
+docker run -d -p 127.0.0.1:11434:11434 -e OLLAMA_CONTEXT_LENGTH=8192 -v ollama:/root/.ollama ollama/ollama:0.40.15
+docker exec <container> ollama pull granite4:3b
+uv run pytest -m llm
+```
+
+`DBOT_EVAL_MODEL` overrides the model (default `ollama:granite4:3b`, any pydantic-ai model string) and
+`OLLAMA_BASE_URL` the server (default `http://127.0.0.1:11434/v1`). ollama's OpenAI-compatible API ignores `num_ctx`,
+so set the context size on the server with `OLLAMA_CONTEXT_LENGTH`.
 
 Docs: [architecture](docs/architecture.md), [configuration](docs/configuration.md),
 [deployment](docs/deployment.md), [operations](docs/operations.md).

@@ -1,11 +1,17 @@
 """Stack for the real-LLM evals: certified replay proxy, a dbot.yaml, a warmed catalog and sandbox images.
 
-The MCP server runs as opencode's child process (through mcp_tap.py), configured purely by environment:
+The MCP server runs as the eval agent's stdio child process (through mcp_tap.py), configured purely by environment:
 ``Gateway.from_env`` reads DBOT_CONFIG, DBOT_DATA_DIR, DBOT_EGRESS_PROXY and DBOT_SANDBOX_CA_BUNDLE.
+
+The model is a local ollama model: DBOT_EVAL_MODEL (default ollama:granite4:3b) served at OLLAMA_BASE_URL
+(default http://127.0.0.1:11434/v1).
 """
 
 import asyncio
+import json
+import os
 import shutil
+import urllib.request
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
@@ -29,6 +35,8 @@ HERE = Path(__file__).resolve().parent
 INSTANCES = ("abuseipdb", "virustotal", "greynoise")
 # The example config's `env://` names; the server gets the replay proxy's "good" key in each.
 KEY_ENVS = ("ABUSEIPDB_API_KEY", "VIRUSTOTAL_API_KEY", "GREYNOISE_API_KEY")
+MODEL = os.environ.get("DBOT_EVAL_MODEL", "ollama:granite4:3b")
+DEFAULT_OLLAMA_BASE_URL = "http://127.0.0.1:11434/v1"
 
 # One line per scenario attempt, printed in the terminal summary.
 REPORT: list[str] = []
@@ -39,6 +47,27 @@ def pytest_terminal_summary(terminalreporter: pytest.TerminalReporter) -> None:
         terminalreporter.section("llm eval attempts")
         for line in REPORT:
             terminalreporter.write_line(line)
+
+
+@pytest.fixture(scope="session")
+def eval_model() -> Iterator[str]:
+    """The model string. Skips only if the ollama server is unreachable or the model is not pulled."""
+    if not MODEL.startswith("ollama:"):
+        yield MODEL
+        return
+    base = os.environ.get("OLLAMA_BASE_URL") or DEFAULT_OLLAMA_BASE_URL
+    name = MODEL.removeprefix("ollama:")
+    name = name if ":" in name else f"{name}:latest"
+    try:
+        with urllib.request.urlopen(base.removesuffix("/").removesuffix("/v1") + "/api/tags", timeout=10) as resp:  # noqa: S310
+            pulled = {m.get("name") for m in json.load(resp).get("models", [])}
+    except OSError as e:
+        pytest.skip(f"ollama unreachable at {base}: {e}")
+    if name not in pulled:
+        pytest.skip(f"ollama model {name} is not pulled (ollama pull {name})")
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setenv("OLLAMA_BASE_URL", base)
+        yield MODEL
 
 
 @dataclass(frozen=True)

@@ -104,7 +104,7 @@ testpaths = ["tests"]
 addopts = "-m 'not llm'"
 markers = [
     "docker: needs a docker daemon; skips itself when docker is unavailable",
-    "llm: real-LLM evals via the opencode CLI (run with -m llm; needs OPENCODE_API_KEY)",
+    "llm: real-LLM evals on a local ollama model (run with -m llm; needs ollama with DBOT_EVAL_MODEL pulled)",
 ]
 
 # ── Mypy ──────────────────────────────────────────────────────────────
