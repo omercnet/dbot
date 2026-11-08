@@ -11,27 +11,29 @@
    ```
 
 2. An approver opens `/approvals` (through oauth2-proxy) and clicks Approve or Deny. The page shows the instance,
-   command, args, reason, requester, the alert it is for, and the expiry. Requesters cannot decide their own
-   requests. Every form carries a CSRF token.
-3. The caller repeats the same call with `approval_id`. For example, from the CLI:
+   command, args (with `secret: true` args masked), reason, requester, the alert or person it is for, and the
+   expiry. Nobody can decide a request they made or that was made on their behalf (an MCP request is made on behalf
+   of `DBOT_MCP_USER`). Every form carries a CSRF token.
+3. The requester repeats the same call with `approval_id`. For example, from the CLI:
 
    ```bash
    dbot invoke abuseipdb abuseipdb-report-ip -a ip=203.0.113.7 -a categories=18 -r "confirmed abuse" \
-     --approval-id 0083...
+     --user alice --approval-id 0083...
    ```
 
    Over MCP, the caller passes `approval_id` to `invoke_tool`, and can poll `get_approval(approval_id)` first. For the
    responder, approving or denying requeues the alert, and the next run executes the approved action once.
-4. An approval runs only an identical call (same instance, command and args), and only once. A second use returns
-   `denied: approval ... is consumed, not approved`. Approvals expire after 1 hour. Their statuses are `pending`,
-   `approved`, `denied`, `consumed` and `expired`.
+4. An approval runs only an identical call (same instance, command and args) by the same requester (actor id and
+   on-behalf-of), and only once. Anyone else gets `denied: approval ... was requested by someone else`. A second use
+   returns `denied: approval ... is consumed, not approved`. Approvals expire after 1 hour. Their statuses are
+   `pending`, `approved`, `denied`, `consumed` and `expired`.
 
 ## Audit log
 
 Records are appended to `$DBOT_DATA_DIR/audit/audit-YYYY-MM-DD.jsonl`, one file per UTC day. The record types are:
 
-- `invoke`: instance, command, redacted args, reason, risk, status, `error_kind`, duration, actor, roles and
-  `on_behalf_of`;
+- `invoke`: instance, command, args (known secret values and `secret: true` args redacted), reason, risk, status,
+  `error_kind`, duration, actor, roles and `on_behalf_of`;
 - `approval_decision`;
 - `ingest`: `accepted`, `duplicate`, or `rejected` for a bad signature.
 
@@ -45,7 +47,9 @@ dbot audit verify /var/lib/dbot/audit/audit-2026-11-08.jsonl
 
 The command prints `OK` and exits 0, or prints `FAIL: chain broken at seq N` and exits 1. Any edited, removed or
 reordered line breaks the chain. In compose, run `docker compose exec dbot dbot audit verify /var/lib/dbot/audit`.
-Ship the files to WORM storage or your SIEM if you need tamper evidence beyond the host.
+The chain has no key, so someone who can write the data volume can rewrite it from the edited line on, or truncate
+it, and `verify` still passes. For tamper evidence, ship the files, or at least each day's last `hash`, to an
+external append-only sink (SIEM, syslog, WORM storage); see [deployment](deployment.md#security-notes).
 
 ## Alerts
 

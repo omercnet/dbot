@@ -5,10 +5,18 @@ from typing import Any
 import pytest
 from fastmcp import Client
 
-from dbot.gateway import Gateway
-from dbot.mcp import MAX_FIELD_BYTES, TRUNCATED, build_mcp
+from dbot.control.secrets import REDACTED
+from dbot.gateway import Denied, Gateway
+from dbot.mcp import MAX_FIELD_BYTES, TRUNCATED, build_mcp, main
 from dbot.sandbox.types import CommandResult, Entry
-from tests.gateway.conftest import CANARY, FakeSandbox
+from tests.gateway.conftest import CANARY, FakeSandbox, actor
+
+MCP_USER = "dana"
+
+
+@pytest.fixture(autouse=True)
+def mcp_user(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DBOT_MCP_USER", MCP_USER)
 
 
 async def call(gateway: Gateway, tool: str, args: dict[str, Any]) -> Any:
@@ -72,6 +80,41 @@ async def test_invoke_destructive_returns_pending_then_approval_visible(gateway:
     approval = await call(gateway, "get_approval", {"approval_id": out["approval_id"]})
     assert approval["status"] == "pending"
     assert approval["requested_by"] == "agent:mcp"
+    assert approval["on_behalf_of"] == MCP_USER
+
+
+async def test_mcp_user_cannot_approve_own_request(gateway: Gateway, sandbox: FakeSandbox) -> None:
+    args = {"instance": "fake", "command": "fake-block-ip", "args": {"ip": "6.6.6.6"}, "reason": "contain"}
+    out = await call(gateway, "invoke_tool", args)
+    decided = gateway.decide_approval(out["approval_id"], actor("approver", id=MCP_USER), approve=True)
+    assert isinstance(decided, Denied)
+    assert "own request" in decided.reason
+    assert gateway.decide_approval(out["approval_id"], actor("approver", id="erin"), approve=True).status == "approved"
+    ran = await call(gateway, "invoke_tool", {**args, "approval_id": out["approval_id"]})
+    assert ran["status"] == "ok"
+
+
+@pytest.mark.parametrize("value", [None, "", "  "])
+def test_mcp_refuses_to_start_without_user(
+    gateway: Gateway, monkeypatch: pytest.MonkeyPatch, value: str | None
+) -> None:
+    if value is None:
+        monkeypatch.delenv("DBOT_MCP_USER")
+    else:
+        monkeypatch.setenv("DBOT_MCP_USER", value)
+    with pytest.raises(SystemExit, match="DBOT_MCP_USER is not set"):
+        main()
+    with pytest.raises(ValueError, match="DBOT_MCP_USER"):
+        build_mcp(gateway)
+
+
+async def test_get_approval_masks_secret_args(gateway: Gateway) -> None:
+    args = {"user": "carol", "password": "mcp-Secret-pw-31"}
+    out = await call(
+        gateway, "invoke_tool", {"instance": "fake", "command": "fake-set-password", "args": args, "reason": "r"}
+    )
+    approval = await call(gateway, "get_approval", {"approval_id": out["approval_id"]})
+    assert approval["args"] == {"user": "carol", "password": REDACTED}
 
 
 async def test_mcp_roles_from_env(gateway: Gateway, sandbox: FakeSandbox, monkeypatch: pytest.MonkeyPatch) -> None:

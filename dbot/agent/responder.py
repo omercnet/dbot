@@ -187,26 +187,29 @@ async def invoke(
     except Exception as e:
         deps.errors.append(f"{instance}.{command}: {type(e).__name__}: {e}")
         return {"status": "error", "error": f"{type(e).__name__}: {e}"}
+    # What the report stores and shows: secret args masked. A pending action with a secret arg therefore cannot
+    # be replayed by _execute_approved (its args no longer hash to the approval) and is refused, never leaked.
+    shown = deps.gateway.mask_args(instance, command, args)
     if isinstance(out, Pending):
         _record_pending(
             deps,
-            PendingAction(approval_id=out.approval_id, instance=instance, command=command, args=args, reason=reason),
+            PendingAction(approval_id=out.approval_id, instance=instance, command=command, args=shown, reason=reason),
         )
         return {"status": out.status, "approval_id": out.approval_id, "risk": out.risk, "message": out.message}
     if isinstance(out, Denied):
         deps.evidence.append(
-            Evidence(instance=instance, command=command, args=args, finding=out.reason, status="denied")
+            Evidence(instance=instance, command=command, args=shown, finding=out.reason, status="denied")
         )
         return {"status": out.status, "reason": out.reason}
     view = compact(out)
     finding = (view.get("error") or view.get("human_readable") or "")[:500]
-    deps.evidence.append(Evidence(instance=instance, command=command, args=args, finding=finding, status=out.status))
+    deps.evidence.append(Evidence(instance=instance, command=command, args=shown, finding=finding, status=out.status))
     if approval_id is not None:  # the approval was consumed, so the action ran whatever its status
         deps.taken.append(
             ActionTaken(
                 instance=instance,
                 command=command,
-                args=args,
+                args=shown,
                 result=finding,
                 approval_id=approval_id,
                 status=out.status,
@@ -339,9 +342,14 @@ async def respond(
     errors = list(report.errors) + deps.errors
     if budget.exhausted:
         errors.append(f"tool budget exhausted after {budget.calls} calls")
+    # The model writes its own evidence list; mask its args the same way, since it may copy a secret arg into it.
+    evidence = [
+        e.model_copy(update={"args": gateway.mask_args(e.instance, e.command, e.args)}) for e in report.evidence
+    ]
     final = report.model_copy(
         update={
             "alert_id": alert_id,
+            "evidence": evidence,
             "actions_taken": taken,
             "actions_pending": pending,
             "errors": errors,

@@ -3,7 +3,7 @@ from typing import Any
 
 import pytest
 
-from dbot.catalog import Catalog, CommandDef, IntegrationDef
+from dbot.catalog import ArgDef, Catalog, CommandDef, IntegrationDef, ParamDef
 from dbot.control.approvals import Approvals
 from dbot.control.audit import AuditLog
 from dbot.control.config import DbotConfig
@@ -50,7 +50,15 @@ def catalog() -> Catalog:
             CommandDef(name="fake-block-ip", description="Block an IP address"),
             CommandDef(name="fake-purge", description="Purge stuff", dangerous=True),
             CommandDef(name="test-module"),
+            CommandDef(name="fake-frobnicate", description="Matches no policy glob"),
+            CommandDef(
+                name="fake-set-password",
+                description="Set a user's password",
+                args=[ArgDef(name="user"), ArgDef(name="password", secret=True)],
+            ),
+            CommandDef(name="fake-get-token", description="Look up a token", args=[ArgDef(name="token", secret=True)]),
         ],
+        params=[ParamDef(name="url"), ParamDef(name="credentials", type=9), ParamDef(name="apikey", type=4)],
     )
     other = IntegrationDef(pack="Other", name="Other", py_path="/dev/null", commands=[CommandDef(name="ip")])
     return Catalog([fake, other])

@@ -1,7 +1,6 @@
 """The ``dbot`` command line: serve | worker | mcp | invoke | audit verify | config check | egress write | probe."""
 
 import asyncio
-import os
 from pathlib import Path
 from typing import Annotated
 
@@ -34,7 +33,7 @@ def worker() -> None:
 
 @app.command()
 def mcp() -> None:
-    """Serve MCP over stdio (actor agent:mcp, roles from DBOT_MCP_ROLES)."""
+    """Serve MCP over stdio (actor agent:mcp on behalf of DBOT_MCP_USER, roles from DBOT_MCP_ROLES)."""
     from dbot.mcp import main
 
     main()
@@ -57,13 +56,19 @@ def invoke(
     reason: Annotated[str, typer.Option("--reason", "-r", help="Why; recorded in the audit log.")],
     arg: Annotated[list[str] | None, typer.Option("--arg", "-a", help="Command argument as k=v; repeatable.")] = None,
     approval_id: Annotated[str | None, typer.Option(help="Approval for a destructive command.")] = None,
+    user: Annotated[
+        str | None, typer.Option("--user", "-u", envvar="DBOT_USER", help="Your user id; recorded as requester.")
+    ] = None,
 ) -> None:
-    """Run one command through the gateway as an analyst (id from $USER) and print the result JSON."""
+    """Run one command through the gateway as an analyst (--user or DBOT_USER) and print the result JSON."""
     from dbot.control.config import ConfigError
     from dbot.gateway import Actor, Gateway
 
     args = _parse_args(arg or [])
-    actor = Actor(id=os.environ.get("USER") or "unknown", kind="human", roles={"analyst"})
+    if not user or not user.strip():
+        typer.echo("dbot invoke: --user or DBOT_USER is required (the person running the command)", err=True)
+        raise typer.Exit(2)
+    actor = Actor(id=user.strip(), kind="human", roles={"analyst"})
     try:
         gateway = Gateway.from_env()
     except ConfigError as e:
@@ -92,15 +97,21 @@ def audit_verify(path: Path) -> None:
 
 @config_app.command("check")
 def config_check(path: Annotated[Path | None, typer.Argument(help="Config file; default DBOT_CONFIG.")] = None) -> None:
-    """Load the config and resolve every instance's secrets. Prints OK/error per instance, never values."""
+    """Load the config and resolve every instance's secrets. Prints OK/error per instance, never values.
+
+    Warns (without failing) about credential params (YAML type 4 or 9) written as literals instead of env:// or
+    file:// references; the warning names the param path, never the value."""
+    from dbot.catalog import Catalog, index_content
     from dbot.control import secrets
     from dbot.control.config import ConfigError, load_config
+    from dbot.gateway import content_root, credential_values
 
     try:
         cfg = load_config(path)
     except ConfigError as e:
         typer.echo(str(e), err=True)
         raise typer.Exit(1) from None
+    catalog = Catalog(index_content(content_root()))
     failed = False
     for inst in cfg.instances:
         try:
@@ -110,6 +121,15 @@ def config_check(path: Annotated[Path | None, typer.Argument(help="Config file; 
             failed = True
             status = f"error: {e}"
         typer.echo(f"{inst.name} ({inst.integration}{'' if inst.enabled else ', disabled'}): {status}")
+        try:
+            integration = catalog.get(inst.integration)
+        except KeyError:
+            continue
+        for where, value in credential_values(integration, inst.params):
+            if not secrets.is_secret_ref(value):
+                typer.echo(
+                    f"warning: {inst.name}: params.{where} is a literal credential; use env:// or file://", err=True
+                )
     for name, source in cfg.ingest.sources.items():
         try:
             secrets.resolve_value(source.hmac_secret)

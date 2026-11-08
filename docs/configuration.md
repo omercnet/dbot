@@ -3,7 +3,9 @@
 Operators edit one YAML file. dbot reads it from `DBOT_CONFIG` (default `/etc/dbot/dbot.yaml`) at startup.
 Restart `dbot serve`, `dbot worker` and `dbot mcp` after you change it. Unknown keys are errors.
 `dbot config check [PATH]` validates the file and resolves every secret. It prints `OK` or the problem for each
-instance and ingest source, never a value, and exits 1 on any failure.
+instance and ingest source, never a value, and exits 1 on any failure. It also warns (without failing) when a
+credential param (YAML type 4 or 9) is written as a literal instead of a secret reference, naming the param path
+(for example `params.credentials.password`), never the value.
 
 `deploy/dbot.yaml.example` is a complete example with the five certified threat-intel instances.
 
@@ -18,11 +20,19 @@ instances:
       credentials: {password: env://ABUSEIPDB_API_KEY}
     allow_hosts: [api.abuseipdb.com]   # egress allowlist; default: hostnames of url-like params
     enabled: true                      # default true
+    policy:                            # optional; wins over the global policy for this instance only
+      read: [abuseipdb-check-cidr-block]
+      destructive: []
 
-policy:
-  destructive: ["*block*", "*isolate*", "*quarantine*", "*disable*", "*delete*", "*revoke*", "*suspend*",
-                "*unblock*", "*release*", "*-create-*", "*-update-*"]   # the default list
-  read: ["test-module"]                # default; explicit read overrides win over destructive globs
+policy:                                # setting a list replaces its default; copy the defaults to extend them
+  destructive: ["*block*", "*isolate*", "*quarantine*", "*disable*", "*enable*", "*delete*", "*revoke*",
+                "*suspend*", "*release*", "*contain*", "*kill*", "*remove*", "*reset*", "*expire*", "*modify*",
+                "*unlock*", "*send*", "*execute*", "*upload*", "*resolve*", "*submit*", "*restore*",
+                "*-run*", "run-*", "*-set-*", "*-set", "set-*", "*-add-*", "*-add", "add-*",
+                "*-create-*", "*-update-*"]                                # the default list
+  read: ["test-module", "ip", "domain", "url", "file", "email", "cve", "endpoint",
+         "*-get-*", "*-get", "*-list-*", "*-list", "*-search*", "*-lookup*", "*-query*",
+         "*-check-*", "*-check", "*-info*", "*-reputation*", "*-enrich*"]  # the default list
 
 roles:                                 # dbot role -> OIDC groups
   viewer: [soc-viewers]
@@ -67,19 +77,37 @@ dbot rejects backend-looking schemes such as `vault://`, `aws-sm://` and `op://`
 literals. Resolved values exist only in memory and in the sandbox's stdin. They are redacted from command results,
 logs and the audit log. Error messages name the reference, never the value.
 
+The gateway also registers every credential value for redaction, literal or reference: each type 4 (encrypted)
+param, and the `identifier` and `password` of each type 9 (credentials) param, along with their URL-encoded forms
+and the base64 `identifier:password` Basic-auth form. Prefer references anyway; a literal sits in `dbot.yaml`.
+
+Command arguments that the integration YAML marks `secret: true` are passed to the sandbox unchanged but replaced by
+`***REDACTED***` in the audit log, in stored approvals (the approval still binds the real value by hash), on
+`/approvals`, in MCP `get_approval`, and in the responder's report. The responder therefore cannot replay an
+approved action that has a secret argument; it is refused, and the action must be re-run over MCP or the CLI.
+
 ## Policy
 
-`policy.risk(command)` decides how a command is gated:
+`policy.risk(command)` decides how a command is gated. It fails closed:
 
-1. If it matches `read`, it is `read`.
-2. Otherwise, if it matches `destructive`, it is `destructive`.
-3. Otherwise, if the integration YAML marks it `dangerous: true`, it is `destructive`.
-4. Otherwise, it is `read`.
+1. If it matches the instance's `policy.read`, it is `read`.
+2. Otherwise, if it matches the instance's `policy.destructive`, it is `destructive`.
+3. Otherwise, if the integration YAML marks it `execution: true`, it is `destructive`.
+4. Otherwise, if it matches the global `destructive`, it is `destructive`.
+5. Otherwise, if it matches the global `read`, it is `read`.
+6. Otherwise, it is `destructive`.
 
 Globs use `fnmatch` and match the command name (without the integration prefix) case-insensitively. Destructive
-commands always need a single-use approval. The example config adds `*-report-*`, `*-submit*`, `*-add` and `*scan`,
-because the threat-intel integrations write to the vendor with those commands. It also marks
-`abuseipdb-check-cidr-block` as read, because `*block*` would otherwise catch it.
+commands always need a single-use approval. Destructive wins when a command matches both global lists, so
+`cs-falcon-run-get-command` (`*-run*`) stays gated although it also matches `*-get-*`; only an instance `read`
+override can lift such a command. The default `read` list covers the generic reputation commands (`ip`, `domain`,
+`url`, `file`, `email`, `cve`, `endpoint`) and lookup verbs (`-get`, `-list`, `-search`, `-lookup`, `-query`,
+`-check`, `-info`, `-reputation`, `-enrich`). Anything else, including vendor writes such as
+`abuseipdb-report-ip`, `urlscan-submit` or `file-scan`, needs approval. Some reads fall through too (for example
+`greynoise-stats`, `vt-passive-dns-data`); add them to an instance's `policy.read` if you need them ungated.
+
+The example config marks `abuseipdb-check-cidr-block` as read on the `abuseipdb` instance, because `*block*` would
+otherwise catch it, and marks `url` destructive on the `urlscan` instance, where it submits a scan.
 
 ## Roles
 
@@ -93,8 +121,11 @@ mapped groups gets 403.
 | `approver` | as viewer, plus approve/deny on `/approvals` | as analyst |
 
 Nobody can approve a request they made or that was made on their behalf. MCP runs as `agent:mcp` with the roles in
-`DBOT_MCP_ROLES` (default `analyst`). The responder runs as `agent:responder` with the `analyst` role.
-`dbot invoke` runs as `$USER` with the `analyst` role.
+`DBOT_MCP_ROLES` (default `analyst`), on behalf of the person in `DBOT_MCP_USER`; `dbot mcp` refuses to start
+without it, and that person cannot approve the MCP server's requests. The responder runs as `agent:responder` with
+the `analyst` role, on behalf of `alert:<id>`. `dbot invoke` runs as the human named by `--user` or `DBOT_USER`
+(required; `$USER` is not used) with the `analyst` role. Only the requester (the same actor id and on-behalf-of)
+can use an approval.
 
 ## Ingest
 

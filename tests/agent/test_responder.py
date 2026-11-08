@@ -272,3 +272,36 @@ async def test_unknown_or_disabled_instance_is_denied(tmp_path: Path, bad: dict[
     assert script.returns[0]["status"] == "denied"
     assert sandbox.calls == []
     assert report.actions_taken == []
+
+
+async def test_secret_args_are_masked_in_the_report(tmp_path: Path) -> None:
+    gateway, sandbox, config = make_gateway(tmp_path)
+    secret = "agent-Secret-pw-90d1"
+    directory = IntegrationDef(
+        pack="Dir",
+        name="Dir",
+        py_path="/x/Dir.py",
+        commands=[
+            CommandDef(name="dir-get-user", args=[ArgDef(name="user"), ArgDef(name="token", secret=True)]),
+            CommandDef(name="dir-set-password", args=[ArgDef(name="user"), ArgDef(name="password", secret=True)]),
+        ],
+    )
+    gateway.catalog = Catalog([directory])
+    config.instances.append(InstanceConfig(name="dir", integration="Dir"))
+    read = {"instance": "dir", "command": "dir-get-user", "args": {"user": "u1", "token": secret}, "reason": "r"}
+    write = {
+        "instance": "dir",
+        "command": "dir-set-password",
+        "args": {"user": "u1", "password": secret},
+        "reason": "r",
+    }
+    # The model also copies the secret into its own evidence list.
+    claimed = {"instance": "dir", "command": "dir-get-user", "args": {"user": "u1", "token": secret}, "finding": "x"}
+    script = Script([("invoke", read), ("invoke", write)], final(evidence=[claimed]))
+
+    report = await respond(ALERT, gateway, config, alert_id="a1", model=script.model)
+
+    assert sandbox.calls[0][1].args == {"user": "u1", "token": secret}  # the sandbox gets the real value
+    assert [e.args for e in report.evidence] == [{"user": "u1", "token": "***REDACTED***"}]
+    assert [p.args for p in report.actions_pending] == [{"user": "u1", "password": "***REDACTED***"}]
+    assert secret not in report.model_dump_json()

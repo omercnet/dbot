@@ -20,17 +20,18 @@ def risk(
     command_def: CommandDef | None = None,
     instance: InstanceConfig | None = None,
 ) -> Risk:
-    """Classify ``command``. Precedence: instance read, instance destructive, global read, global destructive,
-    the integration's ``dangerous: true`` flag, else read. Globs match the command name case-insensitively."""
+    """Classify ``command``, failing closed. Precedence: instance read, instance destructive, the integration's
+    ``execution: true`` flag, global destructive, global read, else destructive. Destructive wins a tie between
+    global globs, so a read glob like ``*-get-*`` never unlocks ``*-run-get-*``. Globs match case-insensitively."""
     if instance is not None:
         if _matches(command, instance.policy.read):
             return "read"
         if _matches(command, instance.policy.destructive):
             return "destructive"
-    if _matches(command, policy.read):
-        return "read"
-    if _matches(command, policy.destructive):
-        return "destructive"
     if command_def is not None and command_def.dangerous:
         return "destructive"
-    return "read"
+    if _matches(command, policy.destructive):
+        return "destructive"
+    if _matches(command, policy.read):
+        return "read"
+    return "destructive"

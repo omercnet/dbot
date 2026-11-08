@@ -59,6 +59,7 @@ class Stack:
             "DBOT_CACHE_DIR": str(self.assembled),
             "DBOT_EGRESS_PROXY": self.proxy.url,
             "DBOT_SANDBOX_CA_BUNDLE": str(self.proxy.ca_bundle),
+            "DBOT_MCP_USER": "llm-eval",
         } | dict.fromkeys(KEY_ENVS, GOOD_KEY)
 
 
@@ -67,7 +68,8 @@ def write_config(path: Path) -> Path:
     example = yaml.safe_load(EXAMPLE_CONFIG.read_text())
     instances = [i for i in example["instances"] if i["name"] in INSTANCES]
     assert {i["name"] for i in instances} == set(INSTANCES)
-    path.write_text(yaml.safe_dump({"instances": instances, "policy": example["policy"]}))
+    config = {"instances": instances} | ({"policy": example["policy"]} if "policy" in example else {})
+    path.write_text(yaml.safe_dump(config))
     return path
 
 

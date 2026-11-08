@@ -9,6 +9,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml  # type: ignore[import-untyped]
@@ -142,13 +143,21 @@ def cache_dir(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Path]:
 
 
 def write_config(path: Path) -> Path:
-    """A dbot.yaml with a good-key and a revoked-key instance per spec, and the policy shipped in the example."""
+    """A dbot.yaml with a good-key and a revoked-key instance per spec, and the policy shipped in the example
+    (global and per instance)."""
+    example = yaml.safe_load(EXAMPLE_CONFIG.read_text())
+    shipped = {i["name"]: i["policy"] for i in example["instances"] if "policy" in i}
     instances = []
     for spec in SPECS:
-        instances.append(spec.instance_config(spec.instance, spec.key_env))
-        instances.append(spec.instance_config(f"{spec.instance}-revoked", f"{spec.key_env}_REVOKED"))
-    example = yaml.safe_load(EXAMPLE_CONFIG.read_text())
-    path.write_text(yaml.safe_dump({"instances": instances, "policy": example["policy"]}))
+        for name, key_env in ((spec.instance, spec.key_env), (f"{spec.instance}-revoked", f"{spec.key_env}_REVOKED")):
+            inst = spec.instance_config(name, key_env)
+            if spec.instance in shipped:
+                inst["policy"] = shipped[spec.instance]
+            instances.append(inst)
+    config: dict[str, Any] = {"instances": instances}
+    if "policy" in example:
+        config["policy"] = example["policy"]
+    path.write_text(yaml.safe_dump(config))
     return path
 
 

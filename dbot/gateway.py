@@ -4,8 +4,10 @@ Every call is checked (instance, command, role, approval), runs with resolved se
 Resolved params never leave ``invoke``: they are not logged, audited or returned.
 """
 
+import base64
 import os
 import time
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any, Literal
 
@@ -53,6 +55,40 @@ def content_root() -> Path:
     return Path(os.environ.get("DBOT_CONTENT_ROOT") or REPO_CONTENT_ROOT)
 
 
+def credential_values(integration: IntegrationDef, params: dict[str, Any]) -> Iterator[tuple[str, str]]:
+    """(param path, value) of every non-empty string in a type 4 (encrypted) param, or in the ``identifier`` and
+    ``password`` of a type 9 (credentials) param, per the integration's YAML."""
+    types = {p.name: p.type for p in integration.params}
+    for name, value in params.items():
+        kind = types.get(name)
+        if kind == 4 and isinstance(value, str) and value:
+            yield name, value
+        elif kind == 9 and isinstance(value, dict):
+            for sub in ("identifier", "password"):
+                v = value.get(sub)
+                if isinstance(v, str) and v:
+                    yield f"{name}.{sub}", v
+
+
+def register_credentials(integration: IntegrationDef, params: dict[str, Any]) -> None:
+    """Register every credential value of resolved ``params`` for redaction, literal or not, plus the base64
+    ``identifier:password`` form that Basic auth puts on the wire."""
+    for _, value in credential_values(integration, params):
+        secrets.register(value)
+    types = {p.name: p.type for p in integration.params}
+    for name, value in params.items():
+        if types.get(name) == 9 and isinstance(value, dict) and isinstance(value.get("password"), str):
+            ident = value.get("identifier") if isinstance(value.get("identifier"), str) else ""
+            if value["password"]:
+                secrets.register(base64.b64encode(f"{ident}:{value['password']}".encode()).decode("ascii"))
+
+
+def mask_secret_args(command_def: CommandDef, args: dict[str, Any]) -> dict[str, Any]:
+    """``args`` with the value of every ``secret: true`` argument replaced by the redaction marker."""
+    hidden = {a.name for a in command_def.args if a.secret}
+    return {k: secrets.REDACTED if k in hidden else v for k, v in args.items()}
+
+
 class Gateway:
     def __init__(
         self,
@@ -90,13 +126,31 @@ class Gateway:
         )
 
     def resolve(self, integration: str, command: str) -> tuple[IntegrationDef, CommandDef]:
-        """Catalog lookup, plus the implicit `test-module` of every integration. Raises KeyError."""
-        try:
-            return self.catalog.resolve(f"{integration}.{command}")
-        except KeyError:
-            if command != TEST_MODULE.name:
-                raise
-            return self.catalog.get(integration), TEST_MODULE
+        """Look ``command`` up in exactly ``integration`` (never by splitting a dotted tool name), plus the implicit
+        `test-module` of every integration. Raises KeyError."""
+        found = self.catalog.get(integration)
+        cmd = next((c for c in found.commands if c.name == command), None)
+        if cmd is not None:
+            return found, cmd
+        if command == TEST_MODULE.name:
+            return found, TEST_MODULE
+        cmds = ", ".join(c.name for c in found.commands[:20])
+        raise KeyError(
+            f"Tool '{integration}.{command}' not found; tool names are '<Integration>.<command>'."
+            f" Integration '{integration}' has commands: {cmds}."
+        )
+
+    def mask_args(self, instance: str, command: str, args: Any) -> Any:
+        """``args`` as stored and shown: ``secret: true`` arguments masked (when the command resolves on that
+        instance) and every known secret value redacted."""
+        inst = self.config.instance(instance)
+        if inst is not None and isinstance(args, dict):
+            try:
+                _, command_def = self.resolve(inst.integration, command.removeprefix(f"{inst.integration}."))
+                args = mask_secret_args(command_def, args)
+            except KeyError:
+                pass
+        return secrets.redact(args)
 
     def enabled_instances(self, integration: str) -> list[str]:
         return [i.name for i in self.config.instances if i.enabled and i.integration == integration]
@@ -153,7 +207,7 @@ class Gateway:
         audit: dict[str, Any] = {
             "instance": instance,
             "command": command,
-            "args": secrets.redact(args),
+            "args": self.mask_args(instance, command, args),
             "reason": reason,
             "risk": None,
             "approval_id": approval_id,
@@ -217,7 +271,13 @@ class Gateway:
         if risk == "destructive":
             if approval_id is None:
                 approval = self.approvals.request(
-                    instance, name, args, reason, requested_by=actor.id, on_behalf_of=actor.on_behalf_of
+                    instance,
+                    name,
+                    args,
+                    reason,
+                    requested_by=actor.id,
+                    on_behalf_of=actor.on_behalf_of,
+                    display_args=mask_secret_args(command_def, args),
                 )
                 return Pending(
                     approval_id=approval.id,
@@ -227,11 +287,12 @@ class Gateway:
                         "Once an approver approves it, call again with the same args and this approval_id."
                     ),
                 )
-            if not self.approvals.consume(approval_id, instance, name, args):
-                return Denied(reason=self._approval_problem(approval_id, instance, name))
+            if not self.approvals.consume(approval_id, instance, name, args, actor.id, actor.on_behalf_of):
+                return Denied(reason=self._approval_problem(approval_id, instance, name, actor))
 
         try:
             params = secrets.resolve(inst.params)
+            register_credentials(integration, params)
         except secrets.SecretError as e:
             # The message names the reference only; keep it for operators, give callers a generic reason.
             audit["secret_error"] = str(e)
@@ -250,7 +311,7 @@ class Gateway:
         except Exception as e:
             return CommandResult(status="error", error_kind="sandbox", error=f"sandbox failure: {type(e).__name__}")
 
-    def _approval_problem(self, approval_id: str, instance: str, command: str) -> str:
+    def _approval_problem(self, approval_id: str, instance: str, command: str, actor: Actor) -> str:
         approval = self.approvals.get(approval_id)
         if approval is None:
             return f"approval {approval_id} does not exist"
@@ -258,6 +319,8 @@ class Gateway:
             return f"approval {approval_id} is {approval.status}, not approved"
         if (approval.instance, approval.command) != (instance, command):
             return f"approval {approval_id} is for '{approval.command}' on '{approval.instance}'"
+        if (approval.requested_by, approval.on_behalf_of or "") != (actor.id, actor.on_behalf_of or ""):
+            return f"approval {approval_id} was requested by someone else; only the requester can use it"
         return f"approval {approval_id} does not match these args; request a new approval"
 
     def get_approval(self, approval_id: str) -> Approval | None:

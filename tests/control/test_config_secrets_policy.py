@@ -198,31 +198,97 @@ def test_redact_text_and_objects(monkeypatch: pytest.MonkeyPatch) -> None:
 @pytest.mark.parametrize(
     ("command", "dangerous", "expected"),
     [
-        ("test-module", True, "read"),  # read override beats dangerous flag
+        ("test-module", False, "read"),  # global read glob
+        ("test-module", True, "destructive"),  # dangerous flag beats global read
         ("fw-unblock-ip", False, "destructive"),  # destructive glob
         ("FW-Block-IP", False, "destructive"),  # case-insensitive
         ("ip", True, "destructive"),  # dangerous flag
-        ("ip", False, "read"),  # default
+        ("ip", False, "read"),
         ("jira-create-issue", False, "destructive"),
-        ("createissue", False, "read"),  # "*-create-*" needs the dashes
+        ("fw-block-get", False, "destructive"),  # matches both globs: destructive wins the tie
+        ("acme-frobnicate", False, "destructive"),  # matches nothing: fail closed
     ],
 )
 def test_risk(command: str, dangerous: bool, expected: str) -> None:
-    policy = PolicyConfig(destructive=["*block*", "*-create-*"], read=["test-module"])
+    policy = PolicyConfig(destructive=["*block*", "*-create-*"], read=["test-module", "ip", "*-get"])
     assert risk(command, policy, CommandDef(name=command, dangerous=dangerous)) == expected
 
 
-def test_read_override_beats_destructive_glob() -> None:
-    policy = PolicyConfig(destructive=["*block*"], read=["fw-blocklist-get"])
-    assert risk("fw-blocklist-get", policy) == "read"
-    assert risk("fw-block-ip", policy) == "destructive"
+def test_unknown_command_is_destructive() -> None:
+    assert risk("acme-frobnicate", PolicyConfig()) == "destructive"
+    assert risk("acme-frobnicate", PolicyConfig(destructive=[], read=[])) == "destructive"
 
 
-def test_default_policy_covers_spec_globs() -> None:
-    policy = PolicyConfig()
-    assert risk("ad-disable-account", policy) == "destructive"
-    assert risk("test-module", policy) == "read"
-    assert risk("abuseipdb-check-ip", policy) == "read"
+def test_global_destructive_beats_global_read() -> None:
+    policy = PolicyConfig(destructive=["*block*"], read=["*-get*"])
+    assert risk("fw-blocklist-get", policy) == "destructive"
+    inst = InstanceConfig(name="fw", integration="X", policy=PolicyOverride(read=["fw-blocklist-get"]))
+    assert risk("fw-blocklist-get", policy, None, inst) == "read"  # only an instance read unlocks it
+
+
+def test_precedence_order() -> None:
+    """instance read > instance destructive > execution flag > global destructive > global read > destructive."""
+    cmd = "x-get-y"
+    every = ["x-*"]
+    policy = PolicyConfig(destructive=every, read=every)
+    dangerous = CommandDef(name=cmd, dangerous=True)
+    both = InstanceConfig(name="a", integration="X", policy=PolicyOverride(read=every, destructive=every))
+    only_destructive = InstanceConfig(name="a", integration="X", policy=PolicyOverride(destructive=every))
+    assert risk(cmd, policy, dangerous, both) == "read"
+    assert risk(cmd, PolicyConfig(destructive=[], read=every), None, only_destructive) == "destructive"
+    assert risk(cmd, PolicyConfig(destructive=[], read=every), dangerous) == "destructive"
+    assert risk(cmd, policy) == "destructive"
+    assert risk(cmd, PolicyConfig(destructive=[], read=every)) == "read"
+    assert risk(cmd, PolicyConfig(destructive=[], read=[])) == "destructive"
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "ad-disable-account",
+        "cs-falcon-run-command",
+        "cs-falcon-run-script",
+        "cs-falcon-run-get-command",  # contains "-get-": destructive still wins
+        "cs-falcon-contain-host",
+        "cs-falcon-rtr-kill-process",
+        "cs-falcon-rtr-remove-file",
+        "cs-falcon-resolve-detection",
+        "cs-falcon-list-quarantined-file",  # contains "-list-" and "quarantine"
+        "ad-set-new-password",
+        "ad-add-to-group",
+        "ad-remove-from-group",
+        "ad-expire-password",
+        "ad-modify-user-ou",
+        "ad-unlock-account",
+        "vt-comments-add",
+        "abuseipdb-check-cidr-block",
+        "urlscan-submit",
+    ],
+)
+def test_default_policy_destructive(command: str) -> None:
+    assert risk(command, PolicyConfig()) == "destructive"
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "test-module",
+        "ip",
+        "url",
+        "cve",
+        "abuseipdb-check-ip",
+        "ad-get-user",
+        "ad-search",
+        "cs-falcon-search-device",
+        "vt-analysis-get",
+        "greynoise-ip-quick-check",
+        "alienvault-get-pulse-details",
+        "asset-get-info",  # "asset" must not hit a "set" verb glob
+        "ip-address-lookup",  # "address" must not hit an "add" verb glob
+    ],
+)
+def test_default_policy_read(command: str) -> None:
+    assert risk(command, PolicyConfig()) == "read"
 
 
 @pytest.mark.parametrize(
@@ -233,14 +299,14 @@ def test_default_policy_covers_spec_globs() -> None:
         ("test-module", [], ["test-module"], False, "destructive"),  # instance destructive beats global read
         ("url", [], ["URL"], False, "destructive"),  # instance destructive, case-insensitive
         ("purge", ["purge"], [], True, "read"),  # instance read beats dangerous flag
-        ("url", [], [], False, "read"),  # no override falls through to global/default
+        ("url", [], [], False, "read"),  # no override falls through to the global read glob
         ("purge", [], [], True, "destructive"),
     ],
 )
 def test_instance_override_precedence(
     command: str, inst_read: list[str], inst_destructive: list[str], dangerous: bool, expected: str
 ) -> None:
-    policy = PolicyConfig(destructive=["*block*"], read=["test-module"])
+    policy = PolicyConfig(destructive=["*block*"], read=["test-module", "url"])
     inst = InstanceConfig(
         name="a", integration="X", policy=PolicyOverride(read=inst_read, destructive=inst_destructive)
     )

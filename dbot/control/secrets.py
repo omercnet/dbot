@@ -1,13 +1,15 @@
 """Secret references (env:// and file://), resolution, and redaction.
 
 A param value is a secret reference when it is a string starting with ``env://`` or ``file://``.
-Every other string is a literal. Resolved values are remembered so logs and the audit chain can redact them.
+Every other string is a literal. Resolved values, and credential literals the gateway registers, are remembered so
+logs and the audit chain can redact them.
 """
 
 import os
 import threading
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote, quote_plus
 
 SUPPORTED_SCHEMES = ("env", "file")
 # Schemes that look like secret-backend references. They are rejected rather than passed through as literals,
@@ -75,9 +77,16 @@ def resolve_value(value: str) -> str:
             raise SecretError(f"secret reference {value!r}: file {path} is missing or unreadable") from None
     if not resolved:
         raise SecretError(f"secret reference {value!r} resolved to an empty value")
-    with _lock:
-        _known.add(resolved)
+    register(resolved)
     return resolved
+
+
+def register(value: str) -> None:
+    """Treat ``value``, and its URL-encoded forms, as a known secret that ``redact`` masks. Empty values are ignored."""
+    if not value:
+        return
+    with _lock:
+        _known.update({value, quote(value, safe=""), quote_plus(value)})
 
 
 def _resolve(obj: Any) -> Any:

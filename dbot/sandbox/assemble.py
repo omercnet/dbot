@@ -2,7 +2,7 @@
 
 XSOAR executes CommonServerPython, CommonServerUserPython, the inlined ApiModules and the integration
 in a single namespace, so integrations rely on names they never import (e.g. `Tuple`). The result is
-cached per content commit and integration, next to the in-container shim files.
+cached under a hash of every source byte it is built from, next to the in-container shim files.
 """
 
 import hashlib
@@ -33,60 +33,44 @@ if _dbot_os.environ.get("HTTPS_PROXY"):
 _APIMODULE_IMPORT = re.compile(r"^from (\w+ApiModule) import \*")
 _COMMON_IMPORT = re.compile(r"^(\s*)from (?:CommonServerPython|CommonServerUserPython) import \*")
 _FUTURE_IMPORT = re.compile(r"^from __future__ import ([\w, ]+?)\s*(?:#.*)?$")
+_APIMODULE_IMPORT_BYTES = re.compile(rb"^from (\w+ApiModule) import \*", re.MULTILINE)
 
 
 def cache_root() -> Path:
     return Path(os.environ.get("DBOT_CACHE_DIR") or Path.home() / ".cache" / "dbot" / "assembled")
 
 
-def _read_git_commit(content_root: Path) -> str | None:
-    """Read HEAD from content/.git (a dir, or a `gitdir:` file for submodules) without running git."""
-    dot_git = content_root / ".git"
-    try:
-        if dot_git.is_file():
-            target = dot_git.read_text().strip().removeprefix("gitdir:").strip()
-            dot_git = (content_root / target).resolve()
-        head = (dot_git / "HEAD").read_text().strip()
-    except OSError:
-        return None
-    if not head.startswith("ref:"):
-        return head or None
-    ref = head.removeprefix("ref:").strip()
-    try:
-        return (dot_git / ref).read_text().strip()
-    except OSError:
-        pass
-    try:
-        for line in (dot_git / "packed-refs").read_text().splitlines():
-            sha, _, name = line.partition(" ")
-            if name == ref:
-                return sha
-    except OSError:
-        pass
-    return None
+def source_digest(integration: IntegrationDef, content_root: Path) -> str:
+    """sha256 of every input of the assembled script: this module (typing header, CSUP stub, assembly code), the
+    shim files, CommonServerPython, the integration and the ApiModules they import, transitively.
 
-
-def content_version(content_root: Path, integration: IntegrationDef) -> str:
-    """Content commit; else DBOT_CONTENT_COMMIT; else a hash of the relevant files' mtimes."""
-    commit = _read_git_commit(content_root) or os.environ.get("DBOT_CONTENT_COMMIT")
-    if commit:
-        return commit[:12]
-    paths = [_csp_path(content_root), Path(integration.py_path)]
-    paths += sorted((content_root / "Packs" / "ApiModules" / "Scripts").glob("*/*ApiModule.py"))
+    Any change to any of them gives a new cache key, so a stale assembled script is never served. Costs one read
+    and hash of those files (about 1 MB) per call."""
     h = hashlib.sha256()
-    for p in paths:
-        try:
-            h.update(f"{p}:{p.stat().st_mtime_ns}\n".encode())
-        except OSError:
-            h.update(f"{p}:missing\n".encode())
-    return "mtime-" + h.hexdigest()[:12]
 
+    def add(label: str, data: bytes) -> None:
+        h.update(f"{label}\0{len(data)}\0".encode())
+        h.update(data)
 
-def _shim_version() -> str:
-    h = hashlib.sha256(Path(__file__).read_bytes())
+    add("assemble", Path(__file__).read_bytes())
     for name in SHIM_FILES:
-        h.update((SHIM_DIR / name).read_bytes())
-    return h.hexdigest()[:8]
+        add(name, (SHIM_DIR / name).read_bytes())
+    csp, body = _csp_path(content_root).read_bytes(), Path(integration.py_path).read_bytes()
+    queue = [csp, body]
+    seen: set[str] = set()
+    add("csp", csp)
+    add("integration", body)
+    while queue:
+        for match in _APIMODULE_IMPORT_BYTES.finditer(queue.pop(0)):
+            name = match.group(1).decode()
+            if name in seen:
+                continue
+            seen.add(name)
+            path = _apimodule_path(content_root, name)
+            data = path.read_bytes() if path.is_file() else b""
+            add(f"apimodule {name} {path.is_file()}", data)
+            queue.append(data)
+    return h.hexdigest()
 
 
 def _csp_path(content_root: Path) -> Path:
@@ -166,7 +150,7 @@ def assemble(integration: IntegrationDef, content_root: Path) -> Path:
 
     The script's directory is what the sandbox mounts at /dbot.
     """
-    key = f"{content_version(content_root, integration)}-{_shim_version()}"
+    key = source_digest(integration, content_root)[:24]
     target = cache_root() / key / _safe_dirname(integration.name)
     script = target / SCRIPT_NAME
     if script.is_file() and all((target / n).is_file() for n in SHIM_FILES):

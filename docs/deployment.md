@@ -45,9 +45,11 @@ docker compose run --rm dbot config check
 `dbot.yaml`, `oauth2-proxy.cfg` and `.env` are gitignored. Instead of putting secrets in `.env`, you can mount files
 and reference them as `file:///run/secrets/<name>` in `dbot.yaml`.
 
-`/var/cache/dbot` holds the assembled scripts. Sandboxes bind-mount it through the host daemon, so the path must
-be the same on the host and in the container, and the image's `dbot` user (uid 10001) must own it. The build arg
-`DOCKER_GID` (default 999) must match the host's docker group, so that the non-root user can use the socket:
+`/var/cache/dbot` holds the assembled scripts, keyed by a sha256 of their source bytes (CommonServerPython, the
+integration, its ApiModules and the dbot shim), so a content upgrade can never reuse a stale script. Sandboxes
+bind-mount it through the host daemon, so the path must be the same on the host and in the container, and the
+image's `dbot` user (uid 10001) must own it. The build arg `DOCKER_GID` (default 999) must match the host's docker
+group, so that the non-root user can use the socket:
 
 ```bash
 DOCKER_GID=$(getent group docker | cut -d: -f3) CONTENT_COMMIT=$(git rev-parse HEAD:content) docker compose up -d --build
@@ -79,6 +81,20 @@ cache, and it strips `X-Forwarded-For`. The access log (every CONNECT, with the 
 daemon, which means root on the host. Run the stack on a dedicated VM, or set `DOCKER_HOST` to a remote
 rootless or sysbox daemon and drop the socket mount. Integration containers never get the socket.
 
+## Security notes
+
+- **Group names.** dbot splits `X-Forwarded-Groups` on commas. If users can create groups in your IdP
+  (self-service Azure AD or Google groups), a group named `x,soc-leads` would grant `soc-leads`. Either make sure
+  the IdP cannot produce group names that contain commas, or map `roles:` only to IdP-managed groups that users
+  cannot create or rename.
+- **Audit tamper evidence.** The audit hash chain has no key and no external anchor. `dbot audit verify` detects a
+  partial edit, but anyone with write access to the data volume can rewrite every hash after an edit, or cut off
+  the end of the log, and `verify` still passes. Ship the audit files, or at least each day's last `hash` (the
+  chain head), to an external append-only sink (SIEM, syslog, WORM storage) and compare against it.
+- **MCP and CLI principals.** `dbot mcp` needs `DBOT_MCP_USER` and `dbot invoke` needs `--user`/`DBOT_USER`. Set
+  them to the real user id (the one oauth2-proxy sends as `X-Forwarded-User`), or the self-approval check cannot
+  match the person.
+
 ## Environment variables
 
 All variables that dbot reads (from `grep os.environ dbot/`):
@@ -89,19 +105,20 @@ All variables that dbot reads (from `grep os.environ dbot/`):
 | `DBOT_DATA_DIR` | `/var/lib/dbot` | all | `dbot.db` (approvals, alerts), `audit/`, `cache/` (catalog index) |
 | `DBOT_CACHE_DIR` | `~/.cache/dbot/assembled` | sandbox | assembled scripts; must be the same path on host and container (`/var/cache/dbot/assembled` in the image) |
 | `DBOT_CONTENT_ROOT` | `<repo>/content` | gateway, probe | the demisto/content checkout (`/app/content` in the image) |
-| `DBOT_CONTENT_COMMIT` | from `git` in the content root | catalog, assembly | cache key when the content checkout has no `.git` (set from the `CONTENT_COMMIT` build arg) |
+| `DBOT_CONTENT_COMMIT` | from `git` in the content root | catalog | catalog index cache key when the content checkout has no `.git` (set from the `CONTENT_COMMIT` build arg) |
 | `DBOT_SANDBOX_NETWORK` | none (warns: unrestricted egress) | sandbox | docker network for integration containers (`dbot-sandbox`) |
 | `DBOT_EGRESS_PROXY` | none | gateway | `HTTPS_PROXY`/`HTTP_PROXY` for sandboxes; also forces `params.proxy = true` |
 | `DBOT_SANDBOX_CA_BUNDLE` | none | gateway | PEM file mounted read-only into sandboxes as `REQUESTS_CA_BUNDLE` (replaces the image's trust store); for a TLS-intercepting egress proxy |
 | `DBOT_TRUSTED_PROXIES` | `127.0.0.1` | web | comma-separated IPs/CIDRs allowed to assert `X-Forwarded-User/Groups` |
 | `DBOT_CSRF_SECRET` | random per process | web | CSRF token key; set it, or approval forms break on restart |
 | `DBOT_MCP_ROLES` | `analyst` | mcp | comma-separated roles of the `agent:mcp` actor |
+| `DBOT_MCP_USER` | none (required) | mcp | user id of the person the MCP server acts for; recorded as `on_behalf_of`, and that person cannot approve its requests |
+| `DBOT_USER` | none | cli | actor id for `dbot invoke` when `--user` is not given; one of the two is required |
 | `DBOT_HOST`, `DBOT_PORT` | `0.0.0.0`, `8080` | web | bind address for `dbot serve`; `--host`/`--port` override |
 | `DBOT_LOG_LEVEL` | `INFO` | worker | Python log level for `dbot worker` |
 
 The following are not `DBOT_*` variables, but are also read:
 
 - secret references, `env://NAME`, read `NAME` from the environment of the process that runs the command;
-- `USER` is the actor id for `dbot invoke`;
 - the pydantic-ai provider key (for example `OPENAI_API_KEY`) is read by the worker;
 - `DOCKER_HOST` is honoured by the docker CLI that dbot shells out to.

@@ -68,37 +68,9 @@ def test_assembled_namespace_runs(tmp_path: Path) -> None:
     assert ns["X"] == (2, 1)
 
 
-def _git_dir(root: Path, head: str) -> Path:
-    git = root / ".git"
-    git.mkdir(parents=True)
-    (git / "HEAD").write_text(head + "\n")
-    return git
-
-
-def test_commit_read_from_git_dir_ref_and_packed_refs(tmp_path: Path) -> None:
-    git = _git_dir(tmp_path / "a", "ref: refs/heads/master")
-    (git / "refs" / "heads").mkdir(parents=True)
-    (git / "refs" / "heads" / "master").write_text("a" * 40 + "\n")
-    assert asm._read_git_commit(tmp_path / "a") == "a" * 40
-
-    git = _git_dir(tmp_path / "b", "ref: refs/heads/main")
-    (git / "packed-refs").write_text(f"# pack-refs\n{'b' * 40} refs/heads/main\n")
-    assert asm._read_git_commit(tmp_path / "b") == "b" * 40
-
-
-def test_commit_read_from_submodule_gitdir_file(tmp_path: Path) -> None:
-    gitdir = tmp_path / "modules" / "content"
-    gitdir.mkdir(parents=True)
-    (gitdir / "HEAD").write_text("c" * 40 + "\n")
-    (tmp_path / "content").mkdir()
-    (tmp_path / "content" / ".git").write_text("gitdir: ../modules/content\n")
-    assert asm._read_git_commit(tmp_path / "content") == "c" * 40
-
-
-def test_cache_reused_and_keyed_by_commit(tmp_path: Path, cache_dir: Path) -> None:
+def test_cache_reused_and_keyed_by_source(tmp_path: Path, cache_dir: Path) -> None:
     root = tmp_path / "content"
     integ = make_content(root, "X = 1\n", csp="CSP = 1\n")
-    git = _git_dir(root, "d" * 40)
 
     first = asm.assemble(integ, root)
     assert first.is_relative_to(cache_dir)
@@ -107,23 +79,36 @@ def test_cache_reused_and_keyed_by_commit(tmp_path: Path, cache_dir: Path) -> No
     assert asm.assemble(integ, root) == first
     assert first.stat().st_mtime == 1  # cache hit: not rewritten
 
-    (git / "HEAD").write_text("e" * 40)
+    # Same mtime, same size, new bytes: still a new key, and the new code is what runs.
+    st = Path(integ.py_path).stat()
+    Path(integ.py_path).write_text("X = 2\n")
+    os.utime(integ.py_path, ns=(st.st_atime_ns, st.st_mtime_ns))
     second = asm.assemble(integ, root)
     assert second != first
-    assert "eeeeeeeeeeee" in str(second)
+    assert "X = 2" in second.read_text()
 
 
-def test_cache_key_falls_back_to_env_then_mtimes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    integ = make_content(tmp_path, "X = 1\n", csp="CSP = 1\n")
-    monkeypatch.setenv("DBOT_CONTENT_COMMIT", "f" * 40)
-    assert asm.content_version(tmp_path, integ) == "f" * 12
+@pytest.mark.parametrize("part", ["integration", "csp", "apimodule", "nested apimodule"])
+def test_source_digest_covers_every_input(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, part: str) -> None:
+    monkeypatch.setenv("DBOT_CONTENT_COMMIT", "f" * 40)  # ignored: the key is the bytes, not a commit label
+    integ = make_content(tmp_path, INTEGRATION, csp=FAKE_CSP, apimodules=APIMODULES)
+    before = asm.source_digest(integ, tmp_path)
+    target = {
+        "integration": Path(integ.py_path),
+        "csp": tmp_path / "Packs" / "Base" / "Scripts" / "CommonServerPython" / "CommonServerPython.py",
+        "apimodule": tmp_path / "Packs" / "ApiModules" / "Scripts" / "MidApiModule" / "MidApiModule.py",
+        "nested apimodule": tmp_path / "Packs" / "ApiModules" / "Scripts" / "BaseApiModule" / "BaseApiModule.py",
+    }[part]
+    target.write_text(target.read_text() + "\n# patched\n")
+    assert asm.source_digest(integ, tmp_path) != before
 
-    monkeypatch.delenv("DBOT_CONTENT_COMMIT")
-    before = asm.content_version(tmp_path, integ)
-    assert before.startswith("mtime-")
-    st = Path(integ.py_path).stat()
-    os.utime(integ.py_path, ns=(st.st_atime_ns, st.st_mtime_ns + 10**9))
-    assert asm.content_version(tmp_path, integ) != before
+
+def test_source_digest_ignores_unrelated_apimodules(tmp_path: Path) -> None:
+    integ = make_content(tmp_path, INTEGRATION, csp=FAKE_CSP, apimodules={**APIMODULES, "OtherApiModule": "O = 1\n"})
+    before = asm.source_digest(integ, tmp_path)
+    other = tmp_path / "Packs" / "ApiModules" / "Scripts" / "OtherApiModule" / "OtherApiModule.py"
+    other.write_text("O = 2\n")
+    assert asm.source_digest(integ, tmp_path) == before
 
 
 def test_integration_names_with_spaces_get_distinct_safe_dirs() -> None:

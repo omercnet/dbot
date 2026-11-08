@@ -13,18 +13,65 @@ from dbot.control.secrets import check_ref, is_secret_ref
 DEFAULT_CONFIG_PATH = Path("/etc/dbot/dbot.yaml")
 DEFAULT_DATA_DIR = Path("/var/lib/dbot")
 
+# Anything that matches no glob is destructive, so these globs only matter where a read glob also matches;
+# destructive wins that tie. Verbs are matched with their dashes where a bare substring would hit read names
+# ("*-set-*" not "*set*", which matches "asset"; "*-add-*" not "*add*", which matches "address").
 DEFAULT_DESTRUCTIVE = [
     "*block*",
     "*isolate*",
     "*quarantine*",
     "*disable*",
+    "*enable*",
     "*delete*",
     "*revoke*",
     "*suspend*",
-    "*unblock*",
     "*release*",
+    "*contain*",
+    "*kill*",
+    "*remove*",
+    "*reset*",
+    "*expire*",
+    "*modify*",
+    "*unlock*",
+    "*send*",
+    "*execute*",
+    "*upload*",
+    "*resolve*",
+    "*submit*",
+    "*restore*",
+    "*-run*",
+    "run-*",
+    "*-set-*",
+    "*-set",
+    "set-*",
+    "*-add-*",
+    "*-add",
+    "add-*",
     "*-create-*",
     "*-update-*",
+]
+# Read allowlist: the generic XSOAR reputation commands and conservative lookup verbs.
+DEFAULT_READ = [
+    "test-module",
+    "ip",
+    "domain",
+    "url",
+    "file",
+    "email",
+    "cve",
+    "endpoint",
+    "*-get-*",
+    "*-get",
+    "*-list-*",
+    "*-list",
+    "*-search*",
+    "*-lookup*",
+    "*-query*",
+    "*-check-*",
+    "*-check",
+    "*-info*",
+    "*-reputation*",
+    "*-enrich*",
 ]
 _URL_SCHEMES = frozenset({"http", "https", "ws", "wss", "ftp", "ftps", "ldap", "ldaps", "tcp", "ssl", "tls"})
 
@@ -76,7 +123,7 @@ class InstanceConfig(_Strict):
 
 class PolicyConfig(_Strict):
     destructive: list[str] = Field(default_factory=lambda: list(DEFAULT_DESTRUCTIVE))
-    read: list[str] = Field(default_factory=lambda: ["test-module"])
+    read: list[str] = Field(default_factory=lambda: list(DEFAULT_READ))
 
 
 class IngestSource(_Strict):

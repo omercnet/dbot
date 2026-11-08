@@ -79,8 +79,12 @@ async def test_revoked_key_is_integration_error(gateway: Gateway, spec: Spec) ->
 
 @pytest.mark.parametrize("spec", SPECS, ids=by_id)
 def test_shipped_policy(catalog: Catalog, spec: Spec) -> None:
-    policy = load_config(EXAMPLE_CONFIG).policy
-    assert risk("test-module", policy) == "read"
+    config = load_config(EXAMPLE_CONFIG)
+    inst = config.instance(spec.instance)
+    assert risk("test-module", config.policy, None, inst) == "read"
     for command in spec.reads:
         _, command_def = catalog.resolve(f"{spec.integration}.{command}")
-        assert risk(command, policy, command_def) == "read", command
+        assert risk(command, config.policy, command_def, inst) == "read", command
+    for command in spec.destructive:
+        _, command_def = catalog.resolve(f"{spec.integration}.{command}")
+        assert risk(command, config.policy, command_def, inst) == "destructive", command

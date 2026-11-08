@@ -10,6 +10,7 @@ instances:
       server: https://api.abuseipdb.com/api/v2/
       credentials: {password: env://ABUSEIPDB_API_KEY}
     allow_hosts: [api.abuseipdb.com]
+    policy: {read: [abuseipdb-check-cidr-block]}  # a lookup; the global "*block*" glob would gate it
 
   - name: virustotal
     integration: VirusTotal (API v3)
@@ -40,10 +41,9 @@ instances:
       integrationReliability: C - Fairly reliable
     allow_hosts: [otx.alienvault.com]
 
-policy:
-  # Defaults plus TI submit/report/scan commands, which write to the vendor (reports, comments, new scans).
-  destructive: ["*block*", "*isolate*", "*quarantine*", "*disable*", "*delete*", "*revoke*", "*suspend*", "*unblock*", "*release*", "*-create-*", "*-update-*", "*-report-*", "*-submit*", "*-add", "*scan"]
-  read: ["test-module", "abuseipdb-check-cidr-block"]  # explicit read overrides win over destructive globs
+# policy: omitted, so the defaults apply (see docs/configuration.md). Anything no glob matches is destructive,
+# so TI submit/report/scan commands (abuseipdb-report-ip, urlscan-submit, file-scan, vt-comments-add) need approval.
+# Setting `read` or `destructive` here replaces that default list; copy the defaults when you extend them.
 
 roles:  # OIDC group -> role
   viewer: [soc-viewers]

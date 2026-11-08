@@ -55,9 +55,9 @@ EOF
 export DBOT_CONFIG=$PWD/dbot.yaml DBOT_DATA_DIR=$PWD/data ABUSEIPDB_API_KEY=...
 
 uv run dbot config check                       # resolves every secret; prints OK or an error, never a value
-uv run dbot invoke abuseipdb ip -a ip=8.8.8.8 -r "triage"   # one command through the gateway, as $USER
+uv run dbot invoke abuseipdb ip -a ip=8.8.8.8 -r "triage" --user alice   # one command through the gateway, as alice
 uv run dbot audit verify data/audit            # OK, or the first broken seq
-uv run dbot mcp                                # MCP over stdio; point your MCP client at this command
+DBOT_MCP_USER=alice uv run dbot mcp           # MCP over stdio, acting for alice; point your MCP client at this command
 ```
 
 The first `invoke` pulls the integration's image (for example `demisto/python3`). Without `DBOT_SANDBOX_NETWORK`,
@@ -67,8 +67,12 @@ An MCP client config entry looks like this:
 
 ```json
 {"mcpServers": {"dbot": {"command": "uv", "args": ["run", "--directory", "/path/to/dbot", "dbot", "mcp"],
-  "env": {"DBOT_CONFIG": "/path/to/dbot.yaml", "DBOT_DATA_DIR": "/path/to/data", "ABUSEIPDB_API_KEY": "..."}}}}
+  "env": {"DBOT_CONFIG": "/path/to/dbot.yaml", "DBOT_DATA_DIR": "/path/to/data", "DBOT_MCP_USER": "alice",
+          "ABUSEIPDB_API_KEY": "..."}}}}
 ```
+
+`DBOT_MCP_USER` is required: it names the person the MCP server acts for. Their requests are filed as `agent:mcp` on
+their behalf, so they cannot approve them.
 
 The MCP tools are `search_tools`, `get_tool_schema`, `list_instances`, `invoke_tool`, and `get_approval`.
 
@@ -89,14 +93,18 @@ See [docs/deployment.md](docs/deployment.md) for the networks, every `DBOT_*` va
 
 ## Security model
 
-- **Approvals.** Commands matching the destructive policy (block, isolate, disable, delete, and so on) return
-  `approval_required`. An approver must approve the request on `/approvals`, and nobody can approve their own
-  request. An approval is single use, expires after 1 hour, and is bound to `sha256(instance, command, args)`.
+- **Approvals.** The risk policy fails closed: a command is `read` only if it matches a read glob (lookup verbs such
+  as `-get`, `-list`, `-search`, plus the generic `ip`/`domain`/`url`/`file` reputation commands) and no
+  destructive glob; everything else returns `approval_required`. An approver must approve the request on
+  `/approvals`, and nobody can approve their own request or one made on their behalf. An approval is single use,
+  expires after 1 hour, is bound to `sha256(instance, command, args)`, and only its requester can use it.
 - **Audit chain.** Every invocation, denial, approval decision and accepted ingest is appended to
   `DBOT_DATA_DIR/audit/audit-YYYY-MM-DD.jsonl`. Each record carries `seq`, `prev_hash` and `hash`.
-  `dbot audit verify` detects edited, dropped or reordered lines.
+  `dbot audit verify` detects edited, dropped or reordered lines; ship the chain head off-host for tamper evidence.
 - **Secrets.** Params use `env://NAME` or `file:///run/secrets/name`. There is no secret store and no HTTP API for
-  credentials. Resolved values are passed only to the sandbox, and are redacted from results, logs and the audit log.
+  credentials. Resolved values, and any credential param (type 4/9) even when written as a literal, are passed only
+  to the sandbox and are redacted from results, logs and the audit log. Arguments marked `secret: true` are masked
+  in the audit log, approvals and reports.
 - **Docker socket.** `dbot` and `worker` mount `/var/run/docker.sock`. Whoever controls those containers controls
   the host. Run the stack on a dedicated VM, or point `DOCKER_HOST` at a remote rootless daemon.
 - **Sandboxes.** Each command runs in its own container as `nobody`, with a read-only root, all capabilities

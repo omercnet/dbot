@@ -130,8 +130,12 @@ class Approvals:
         reason: str,
         requested_by: str,
         on_behalf_of: str | None = None,
+        display_args: dict[str, Any] | None = None,
     ) -> Approval:
-        """Create a pending approval. ``on_behalf_of`` names the human an agent acts for, if any."""
+        """Create a pending approval. ``on_behalf_of`` names the human an agent acts for, if any.
+
+        ``display_args`` (default ``args``) is what is stored and shown, e.g. with secret args masked; the hash
+        always binds the real ``args``."""
         now = self._clock()
         approval_id = uuid.uuid4().hex
         with closing(self._connect()) as conn:
@@ -143,7 +147,7 @@ class Approvals:
                     instance,
                     command,
                     # Stored for display only; the hash binds the exact args.
-                    canonical_json(redact(args)),
+                    canonical_json(redact(args if display_args is None else display_args)),
                     args_hash(instance, command, args),
                     redact(reason),
                     requested_by,
@@ -190,12 +194,29 @@ class Approvals:
             ).fetchall()
         return [self._row(r) for r in rows]
 
-    def consume(self, approval_id: str, instance: str, command: str, args: dict[str, Any]) -> bool:
-        """True exactly once for an approved, unexpired approval whose instance/command/args match the request."""
+    def consume(
+        self,
+        approval_id: str,
+        instance: str,
+        command: str,
+        args: dict[str, Any],
+        requested_by: str,
+        on_behalf_of: str | None,
+    ) -> bool:
+        """True exactly once for an approved, unexpired approval whose instance/command/args match the request and
+        whose requester (``requested_by`` and ``on_behalf_of``) is the caller."""
         with closing(self._connect()) as conn:
             cur = conn.execute(
                 "UPDATE approvals SET status = 'consumed', consumed_at = ?"
-                " WHERE id = ? AND status = 'approved' AND expires_at > ? AND args_hash = ?",
-                (self._clock(), approval_id, self._clock(), args_hash(instance, command, args)),
+                " WHERE id = ? AND status = 'approved' AND expires_at > ? AND args_hash = ?"
+                " AND requested_by = ? AND IFNULL(on_behalf_of, '') = ?",
+                (
+                    self._clock(),
+                    approval_id,
+                    self._clock(),
+                    args_hash(instance, command, args),
+                    requested_by,
+                    on_behalf_of or "",
+                ),
             )
             return cur.rowcount == 1

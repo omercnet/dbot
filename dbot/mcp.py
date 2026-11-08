@@ -1,4 +1,5 @@
-"""FastMCP server over the gateway. Every tool call goes through ``Gateway.invoke`` as actor ``agent:mcp``."""
+"""FastMCP server over the gateway. Every tool call goes through ``Gateway.invoke`` as actor ``agent:mcp``, on behalf
+of the human named in ``DBOT_MCP_USER``."""
 
 import json
 import os
@@ -13,8 +14,12 @@ TRUNCATED = "...[truncated]"
 
 
 def mcp_actor() -> Actor:
+    """``agent:mcp`` acting for ``DBOT_MCP_USER``, so that person can never approve their own MCP requests."""
+    user = (os.environ.get("DBOT_MCP_USER") or "").strip()
+    if not user:
+        raise ValueError("DBOT_MCP_USER is not set; set it to the user id of the person this MCP server acts for")
     roles = {r.strip() for r in (os.environ.get("DBOT_MCP_ROLES") or "analyst").split(",") if r.strip()}
-    return Actor(id="agent:mcp", kind="agent", roles=roles)
+    return Actor(id="agent:mcp", kind="agent", roles=roles, on_behalf_of=user)
 
 
 def _cap(text: str, limit: int = MAX_FIELD_BYTES) -> str:
@@ -30,6 +35,7 @@ def _text(value: Any) -> str:
 
 
 def build_mcp(gateway: Gateway) -> FastMCP:
+    actor = mcp_actor()
     mcp = FastMCP(
         "dbot",
         instructions=(
@@ -80,7 +86,7 @@ def build_mcp(gateway: Gateway) -> FastMCP:
         instance: str, command: str, args: dict[str, Any], reason: str, approval_id: str | None = None
     ) -> dict[str, Any]:
         """Run a command on an instance. `reason` is required and audited."""
-        result = await gateway.invoke(instance, command, args, reason, mcp_actor(), approval_id)
+        result = await gateway.invoke(instance, command, args, reason, actor, approval_id)
         if isinstance(result, Pending | Denied):
             return result.model_dump()
         human = "\n\n".join(
@@ -112,6 +118,10 @@ def build_mcp(gateway: Gateway) -> FastMCP:
 
 
 def main() -> None:
+    try:
+        mcp_actor()
+    except ValueError as e:
+        raise SystemExit(f"dbot mcp: {e}") from None
     build_mcp(Gateway.from_env()).run(show_banner=False)
 
 

@@ -184,8 +184,12 @@ def _git_head(content_root: Path) -> str | None:
 
 
 def get_content_hash(content_root: Path) -> str | None:
-    """Content commit: git HEAD of the checkout, else env DBOT_CONTENT_COMMIT (images ship without .git)."""
-    return _git_head(content_root) or os.environ.get("DBOT_CONTENT_COMMIT") or None
+    """Content commit: git HEAD of the checkout, else env DBOT_CONTENT_COMMIT (images ship without .git).
+
+    The image build default "unknown" is not a version: returning it would pin a stale cache across upgrades.
+    """
+    commit = _git_head(content_root) or os.environ.get("DBOT_CONTENT_COMMIT", "")
+    return commit if commit and commit != "unknown" else None
 
 
 _Entry = tuple[IntegrationDef, bool]

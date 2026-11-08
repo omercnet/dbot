@@ -88,7 +88,8 @@ def test_import_error_vs_runtime_exception(tmp_path: Path) -> None:
     # Module-level code that reads params fails at runtime, not import; unresolved names are import errors.
     _, out = run_runner(tmp_path / "c", "REGION = demisto.params()['defaultRegion']\n")
     assert (out["exit"], out["error"]) == ("exception", "KeyError: 'defaultRegion'")
-    _, out = run_runner(tmp_path / "d", "X: Tupple[int] = ()\n")
+    # Not an annotation: Python 3.14 evaluates module annotations lazily (PEP 649).
+    _, out = run_runner(tmp_path / "d", "X = Tupple[int]\n")
     assert out["exit"] == "import"
 
 

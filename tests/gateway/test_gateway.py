@@ -1,15 +1,19 @@
 """Gateway security boundaries, called directly (no agent)."""
 
+import base64
 import json
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 import pytest
 from typer.testing import CliRunner
 
+from dbot.catalog import Catalog, CommandDef, IntegrationDef
 from dbot.cli import app
 from dbot.control.audit import verify
 from dbot.control.config import InstanceConfig, PolicyOverride
+from dbot.control.secrets import REDACTED
 from dbot.gateway import Denied, Gateway, Pending
 from dbot.sandbox.types import CommandResult
 from tests.gateway.conftest import CANARY, FakeSandbox, actor
@@ -311,3 +315,90 @@ async def test_test_module_is_implicit_and_policed(gateway: Gateway, sandbox: Fa
     pending = await gateway.invoke("other", "test-module", {}, REASON, actor("analyst"))
     assert isinstance(pending, Pending)
     assert len(sandbox.calls) == 1
+
+
+async def test_unknown_command_needs_approval(gateway: Gateway, sandbox: FakeSandbox) -> None:
+    """Fail closed: a command no policy glob recognises is destructive."""
+    result = await gateway.invoke("fake", "fake-frobnicate", {}, REASON, actor("analyst"))
+    assert isinstance(result, Pending)
+    assert sandbox.calls == []
+
+
+async def test_secret_args_masked_in_audit_and_approval_but_bound_by_hash(
+    gateway: Gateway, sandbox: FakeSandbox, audit_dir: Path
+) -> None:
+    password = "new-Passw0rd-e41b9"
+    args = {"user": "carol", "password": password}
+    pending = await gateway.invoke("fake", "fake-set-password", args, REASON, actor("analyst"))
+    assert isinstance(pending, Pending)
+    approval = gateway.get_approval(pending.approval_id)
+    assert approval is not None
+    assert approval.args == {"user": "carol", "password": REDACTED}
+    assert not isinstance(gateway.decide_approval(pending.approval_id, actor("approver", id="bob"), True), Denied)
+    # The masked args do not match the approval; only the real ones do.
+    masked = await gateway.invoke("fake", "fake-set-password", approval.args, REASON, actor("analyst"), approval.id)
+    assert isinstance(masked, Denied)
+    result = await gateway.invoke("fake", "fake-set-password", args, REASON, actor("analyst"), approval.id)
+    assert isinstance(result, CommandResult)
+    assert sandbox.calls[-1][1].args == args  # the sandbox gets the real value
+
+    read = await gateway.invoke("fake", "fake-get-token", {"token": password}, REASON, actor("analyst"))
+    assert isinstance(read, CommandResult)
+    assert password not in audit_text(audit_dir)
+    invokes = [r for r in audit_records(audit_dir) if r["type"] == "invoke"]
+    assert invokes[0]["args"] == {"user": "carol", "password": REDACTED}
+    assert invokes[-1]["args"] == {"token": REDACTED}
+
+
+async def test_literal_credentials_are_registered_and_redacted(
+    gateway: Gateway, sandbox: FakeSandbox, audit_dir: Path
+) -> None:
+    ident, password, apikey = "svc-ident-5d1c", "literal-Pw/+=-77aa", "literal-apikey-0c3e"
+    gateway.config.instances.append(
+        InstanceConfig(
+            name="fake-literal",
+            integration="Fake",
+            params={"credentials": {"identifier": ident, "password": password}, "apikey": apikey},
+        )
+    )
+    basic = base64.b64encode(f"{ident}:{password}".encode()).decode()
+    leaks = [password, quote(password, safe=""), apikey, basic, ident]
+    sandbox.result = CommandResult(
+        status="error",
+        error_kind="integration",
+        error=f"401 for url https://x/?key={quote(password, safe='')}&k={apikey} pw={password} Basic {basic} u={ident}",
+    )
+    result = await gateway.invoke("fake-literal", "ip", {}, REASON, actor("analyst"))
+    assert isinstance(result, CommandResult)
+    assert result.error is not None
+    assert REDACTED in result.error
+    text = audit_text(audit_dir)
+    for leak in leaks:
+        assert leak not in result.error, leak
+        assert leak not in text, leak
+
+
+async def test_other_actor_cannot_consume_approval(gateway: Gateway, sandbox: FakeSandbox) -> None:
+    args = {"ip": "6.6.6.6"}
+    approval_id = await _approved(gateway, args)  # requested by alice
+    for other in (
+        actor("analyst", id="agent:mcp", kind="agent", on_behalf_of="mallory"),
+        actor("analyst", id="mallory"),
+        actor("analyst", id="alice", kind="agent", on_behalf_of="alert:9"),
+    ):
+        stolen = await gateway.invoke("fake", "fake-block-ip", args, REASON, other, approval_id)
+        assert isinstance(stolen, Denied)
+        assert "someone else" in stolen.reason
+    assert sandbox.calls == []
+    result = await gateway.invoke("fake", "fake-block-ip", args, REASON, actor("analyst"), approval_id)
+    assert isinstance(result, CommandResult)
+    assert len(sandbox.calls) == 1
+
+
+def test_resolve_uses_the_instance_integration_not_a_dotted_split(gateway: Gateway) -> None:
+    # "X" + "y.z" and "X.y" + "z" share the catalog key "X.y.z"; the instance's integration decides.
+    plain = IntegrationDef(pack="P", name="X", py_path="/dev/null", commands=[CommandDef(name="y.z")])
+    dotted = IntegrationDef(pack="P", name="X.y", py_path="/dev/null", commands=[CommandDef(name="z")])
+    gateway.catalog = Catalog([plain, dotted])
+    assert gateway.resolve("X", "y.z")[0].name == "X"
+    assert gateway.resolve("X.y", "z")[0].name == "X.y"
