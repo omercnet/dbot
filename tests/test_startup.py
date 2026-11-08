@@ -66,7 +66,7 @@ class TestFullBootstrap:
         from dbot.agent.web import create_app
 
         app = create_app()
-        client = TestClient(app)
+        client = TestClient(app, base_url="http://localhost")
         resp = client.get("/api/settings")
         assert resp.status_code == 200
         data = resp.json()
@@ -80,7 +80,7 @@ class TestFullBootstrap:
         from dbot.agent.web import create_app
 
         app = create_app()
-        client = TestClient(app)
+        client = TestClient(app, base_url="http://localhost")
         resp = client.get("/api/packs")
         assert resp.status_code == 200
         packs = resp.json()

@@ -80,7 +80,7 @@ def e2e_app(tmp_path: Path, catalog: Catalog) -> TestClient:
         for i, route in enumerate(settings_router.routes):
             app.routes.insert(i, route)
 
-        yield TestClient(app)
+        yield TestClient(app, base_url="http://localhost")
 
 
 class TestProviderCRUD:

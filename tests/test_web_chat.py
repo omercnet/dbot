@@ -90,7 +90,7 @@ def chat_app(deps: IRDeps, catalog: Catalog, config_db: ConfigDB) -> TestClient:
         for insert_pos, route in enumerate(settings_router.routes):
             starlette_app.routes.insert(insert_pos, route)
 
-        yield TestClient(starlette_app)
+        yield TestClient(starlette_app, base_url="http://localhost")
 
 
 @pytest.fixture

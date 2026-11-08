@@ -62,7 +62,7 @@ class ChatAgent:
         self._agent: Agent[IRDeps, str] = Agent(
             model_name,
             instructions=CHAT_INSTRUCTIONS,
-            toolsets=[toolset],  # type: ignore[list-item]
+            toolsets=[toolset],
             output_type=str,
             deps_type=IRDeps,
         )
