@@ -76,10 +76,15 @@ class Gateway:
         from dbot.sandbox.docker import DockerSandbox
 
         root = content_root()
+        ca_bundle = os.environ.get("DBOT_SANDBOX_CA_BUNDLE") or None
         return cls(
             load_config(),
             Catalog(index_content(root)),
-            DockerSandbox(root, network=os.environ.get("DBOT_SANDBOX_NETWORK") or None),
+            DockerSandbox(
+                root,
+                network=os.environ.get("DBOT_SANDBOX_NETWORK") or None,
+                ca_bundle=Path(ca_bundle) if ca_bundle else None,
+            ),
             Approvals(),
             AuditLog(),
         )

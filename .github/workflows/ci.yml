@@ -81,6 +81,7 @@ jobs:
     runs-on: ubuntu-latest
     # Advisory on PRs and pushes, required nightly.
     continue-on-error: ${{ github.event_name != 'schedule' }}
+    timeout-minutes: 90
     # Secrets are unavailable to fork and Dependabot PRs; the test skips without the key.
     env:
       OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
@@ -101,8 +102,21 @@ jobs:
       - name: Install opencode
         run: npm install -g @opencode/cli@2.2.6
 
+      # opencode -> dbot MCP server -> real Gateway -> DockerSandbox -> mitmdump replaying tests/certified fixtures.
+      # The runner's docker daemon and the dev group's mitmproxy are all the eval needs besides opencode.
       - name: Run LLM eval
-        run: uv run pytest -m llm -v -rs
+        run: uv run pytest -m llm tests/llm -v -rs --basetemp="$RUNNER_TEMP/llm-eval"
+
+      # Per-attempt opencode events, tap logs (tools/call received) and gateway audit JSONL. No secrets:
+      # the audit is redacted and instances use the replay proxy's fake keys.
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: llm-eval
+          path: |
+            ${{ runner.temp }}/llm-eval/**/*.jsonl
+            ${{ runner.temp }}/llm-eval/**/mitmdump.log
+          if-no-files-found: ignore
 
   probe:
     name: Integration probe (nightly)

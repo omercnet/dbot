@@ -6,6 +6,7 @@ import subprocess
 import sys
 import time
 from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -67,14 +68,13 @@ class ReplayProxy:
     log: Path
 
 
-@pytest.fixture(scope="session")
-def replay(tmp_path_factory: pytest.TempPathFactory) -> Iterator[ReplayProxy]:
-    """mitmdump on the docker bridge gateway, answering only from fixtures (lazy upstream: never dials out)."""
+@contextmanager
+def run_replay(fixtures: Path, confdir: Path) -> Iterator[ReplayProxy]:
+    """mitmdump on the docker bridge gateway, answering only from `fixtures` (lazy upstream: never dials out)."""
     if not docker_available():
         pytest.skip("docker daemon not available")
     host = bridge_gateway_ip()
     port = _free_port(host)
-    confdir = tmp_path_factory.mktemp("mitmproxy")
     log = confdir / "mitmdump.log"
     argv = [
         _mitmdump(),
@@ -85,7 +85,7 @@ def replay(tmp_path_factory: pytest.TempPathFactory) -> Iterator[ReplayProxy]:
         "--set", "upstream_cert=false",
         "--set", "flow_detail=1",
         "-s", str(HERE / "replay_addon.py"),
-        "--set", f"replay_fixtures={FIXTURES}",
+        "--set", f"replay_fixtures={fixtures}",
     ]  # fmt: skip
     with log.open("wb") as out:
         proc = subprocess.Popen(argv, stdout=out, stderr=subprocess.STDOUT)  # noqa: S603
@@ -112,6 +112,12 @@ def replay(tmp_path_factory: pytest.TempPathFactory) -> Iterator[ReplayProxy]:
             proc.wait(10)
         except subprocess.TimeoutExpired:
             proc.kill()
+
+
+@pytest.fixture(scope="session")
+def replay(tmp_path_factory: pytest.TempPathFactory) -> Iterator[ReplayProxy]:
+    with run_replay(FIXTURES, tmp_path_factory.mktemp("mitmproxy")) as proxy:
+        yield proxy
 
 
 @pytest.fixture(scope="session")

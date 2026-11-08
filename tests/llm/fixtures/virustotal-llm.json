@@ -1,0 +1,39 @@
+{
+  "integration": "VirusTotal (API v3)",
+  "routes": [
+    {
+      "name": "ip for the GreyNoise fixture IP, so one IP is covered by all three instances",
+      "source": "hand-written: tests/certified/fixtures/virustotal.json 'ip' with the id and owner changed",
+      "method": "GET",
+      "host": "www.virustotal.com",
+      "path": "/api/v3/ip_addresses/71.6.135.131",
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "attributes": {
+              "as_owner": "CARINET",
+              "asn": 10439,
+              "continent": "NA",
+              "country": "US",
+              "last_analysis_results": {
+                "ADMINUSLabs": {"category": "harmless", "engine_name": "ADMINUSLabs", "method": "blacklist", "result": "clean"},
+                "GreenSnow": {"category": "malicious", "engine_name": "GreenSnow", "method": "blacklist", "result": "malicious"}
+              },
+              "last_analysis_stats": {"harmless": 70, "malicious": 3, "suspicious": 1, "timeout": 0, "undetected": 13},
+              "last_modification_date": 1750942740,
+              "network": "71.6.128.0/17",
+              "regional_internet_registry": "ARIN",
+              "reputation": -2,
+              "tags": [],
+              "total_votes": {"harmless": 0, "malicious": 1}
+            },
+            "id": "71.6.135.131",
+            "links": {"self": "https://www.virustotal.com/api/v3/ip_addresses/71.6.135.131"},
+            "type": "ip_address"
+          }
+        }
+      }
+    }
+  ]
+}
