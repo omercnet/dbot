@@ -38,6 +38,8 @@ def run_agent(tmp_path: Path, prompt: str) -> tuple[list[str], str]:
                 "cwd": str(REPO),
                 "enabled": True,
                 "environment": {"PYTHONPATH": str(REPO)},
+                # Server indexes ~1,300 integrations on start; opencode's 5s default is too tight on CI runners.
+                "timeout": 60000,
             }
         },
         "permission": {"bash": "deny", "edit": "deny", "webfetch": "deny"},
@@ -81,6 +83,6 @@ def test_agent_discovers_abuseipdb_tool(tmp_path: Path) -> None:
         "Using only the dbot tools, find the tool that checks an IP address's reputation on AbuseIPDB "
         "and fetch its schema. End your answer with the exact tool name on its own line.",
     )
-    assert "search_tools" in calls
-    assert "get_tool_schema" in calls
-    assert "AbuseDB.ip" in text
+    assert "search_tools" in calls, text
+    assert "get_tool_schema" in calls, text
+    assert "AbuseDB.ip" in text, text
