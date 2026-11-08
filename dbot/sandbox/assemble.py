@@ -20,7 +20,15 @@ TYPING_HEADER = (
     "from typing import *  # noqa: F403\n"
     "from typing import Any, Callable, Dict, Generator, Iterable, Iterator, List, Optional, Set, Tuple, Union, cast\n"
 )
-CSUP_STUB = "# CommonServerUserPython: empty stub (dbot has no org-level overrides)\n"
+# CommonServerUserPython is XSOAR's hook for overriding CSP functions; dbot's only override keeps the
+# sandbox egress proxy in effect even when an instance has its proxy checkbox off.
+CSUP_STUB = """import os as _dbot_os
+
+if _dbot_os.environ.get("HTTPS_PROXY"):
+
+    def skip_proxy():
+        return None
+"""
 
 _APIMODULE_IMPORT = re.compile(r"^from (\w+ApiModule) import \*")
 _COMMON_IMPORT = re.compile(r"^(\s*)from (?:CommonServerPython|CommonServerUserPython) import \*")

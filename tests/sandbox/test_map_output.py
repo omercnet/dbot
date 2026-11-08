@@ -69,6 +69,7 @@ def test_default_params_types_booleans_and_skips_missing() -> None:
             ParamDef(name="insecure", type=8, default="false"),
             ParamDef(name="proxy", type=8, default="True"),
             ParamDef(name="key"),
+            ParamDef(name="unset_checkbox", type=8),
         ],
     )
-    assert default_params(integ) == {"url": "https://api", "insecure": False, "proxy": True}
+    assert default_params(integ) == {"url": "https://api", "insecure": False, "proxy": True, "unset_checkbox": False}

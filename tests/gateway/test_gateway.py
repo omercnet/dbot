@@ -9,6 +9,7 @@ from typer.testing import CliRunner
 
 from dbot.cli import app
 from dbot.control.audit import verify
+from dbot.control.config import InstanceConfig, PolicyOverride
 from dbot.gateway import Denied, Gateway, Pending
 from dbot.sandbox.types import CommandResult
 from tests.gateway.conftest import CANARY, FakeSandbox, actor
@@ -90,6 +91,24 @@ async def test_agent_pending_records_on_behalf_of(gateway: Gateway) -> None:
     approval = gateway.approvals.get(result.approval_id)
     assert approval is not None
     assert approval.on_behalf_of == "alert:7"
+
+
+async def test_instance_policy_gates_command_on_that_instance_only(gateway: Gateway, sandbox: FakeSandbox) -> None:
+    gated = InstanceConfig(
+        name="fake-gated",
+        integration="Fake",
+        params={"credentials": {"password": "env://DBOT_TEST_CANARY"}},
+        policy=PolicyOverride(destructive=["ip"]),
+    )
+    gateway.config.instances.append(gated)
+    pending = await gateway.invoke("fake-gated", "ip", {"ip": "1.2.3.4"}, REASON, actor("analyst"))
+    assert isinstance(pending, Pending)
+    assert pending.risk == "destructive"
+    assert sandbox.calls == []
+    result = await gateway.invoke("fake", "ip", {"ip": "1.2.3.4"}, REASON, actor("analyst"))
+    assert isinstance(result, CommandResult)
+    assert result.status == "ok"
+    assert len(sandbox.calls) == 1
 
 
 async def _approved(gateway: Gateway, args: dict[str, Any]) -> str:
@@ -269,3 +288,26 @@ def test_list_instances_never_exposes_params(gateway: Gateway) -> None:
     assert CANARY not in text
     assert "env://" not in text
     assert "api.example.com" not in text
+
+
+async def test_test_module_is_implicit_and_policed(gateway: Gateway, sandbox: FakeSandbox, audit_dir: Path) -> None:
+    # "Other" does not list test-module in its YAML; XSOAR still supports it on every integration.
+    gateway.config.instances.append(InstanceConfig(name="other", integration="Other"))
+    result = await gateway.invoke("other", "test-module", {}, REASON, actor("analyst"))
+    assert isinstance(result, CommandResult)
+    assert sandbox.calls[0][0] == "Other"
+    assert sandbox.calls[0][1].command == "test-module"
+    rec = audit_records(audit_dir)[-1]
+    assert rec["command"] == "test-module"
+    assert rec["risk"] == "read"
+
+    viewer = await gateway.invoke("other", "test-module", {}, REASON, actor("viewer"))
+    assert isinstance(viewer, Denied)
+    still_unknown = await gateway.invoke("other", "test-modules", {}, REASON, actor("analyst"))
+    assert isinstance(still_unknown, Denied)
+
+    gateway.config.policy.read = []
+    gateway.config.policy.destructive = ["test-module"]
+    pending = await gateway.invoke("other", "test-module", {}, REASON, actor("analyst"))
+    assert isinstance(pending, Pending)
+    assert len(sandbox.calls) == 1

@@ -1,6 +1,7 @@
 """The in-container runner, exercised with the host interpreter (no docker needed)."""
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -9,16 +10,24 @@ from typing import Any
 from dbot.sandbox.assemble import assemble
 from tests.sandbox.conftest import make_content
 
-FAKE_CSP = """import sys
+FAKE_CSP = """import json
+import os
+import sys
 import demistomock as demisto
 
 def return_error(message):
     demisto.results({"Type": 4, "Contents": message, "ContentsFormat": "text"})
     sys.exit(0)
+
+def skip_proxy():
+    for var in ("HTTPS_PROXY", "HTTP_PROXY", "https_proxy", "http_proxy"):
+        os.environ.pop(var, None)
 """
 
 
-def run_runner(tmp_path: Path, source: str, request: dict[str, Any] | None = None) -> tuple[list[str], dict[str, Any]]:
+def run_runner(
+    tmp_path: Path, source: str, request: dict[str, Any] | None = None, env: dict[str, str] | None = None
+) -> tuple[list[str], dict[str, Any]]:
     integ = make_content(tmp_path, source, csp=FAKE_CSP)
     script = assemble(integ, tmp_path)
     req = request or {"command": "cmd", "args": {"a": "1"}, "params": {}}
@@ -29,6 +38,7 @@ def run_runner(tmp_path: Path, source: str, request: dict[str, Any] | None = Non
         text=True,
         timeout=30,
         check=False,
+        env={"PATH": os.environ.get("PATH", ""), **(env or {})},
     )
     lines = proc.stdout.splitlines()
     return lines, json.loads(lines[-1])
@@ -83,17 +93,40 @@ def test_import_error_vs_runtime_exception(tmp_path: Path) -> None:
 
 
 def test_main_runs_exactly_once(tmp_path: Path) -> None:
-    guarded = """def main():
-    demisto.results("ran")
+    # XSOAR-style guard passing arguments: must fire with the integration's own call.
+    guarded = """def main(params, args, command):
+    demisto.results(command)
 if __name__ in ("__main__", "__builtin__", "builtins"):
-    main()
+    main(demisto.params(), demisto.args(), demisto.command())
 """
     _, out = run_runner(tmp_path / "a", guarded)
-    assert out["results"] == ["ran"]
+    assert (out["exit"], out["results"]) == ("ok", ["cmd"])
 
     unguarded = 'def main():\n    demisto.results("ran")\nmain()\n'
     _, out = run_runner(tmp_path / "b", unguarded)
     assert out["results"] == ["ran"]
+
+    # A guard that XSOAR's __name__ never satisfies: the runner calls main() itself.
+    main_only = 'def main():\n    demisto.results("ran")\nif __name__ == "__main__":\n    main()\n'
+    _, out = run_runner(tmp_path / "c", main_only)
+    assert out["results"] == ["ran"]
+
+
+def test_exception_in_guard_started_main_is_runtime(tmp_path: Path) -> None:
+    src = 'def main():\n    import no_such_module_xyz\nif __name__ == "builtins":\n    main()\n'
+    _, out = run_runner(tmp_path, src)
+    assert out["exit"] == "exception"
+
+
+def test_egress_proxy_survives_skip_proxy(tmp_path: Path) -> None:
+    src = """def main():
+    skip_proxy()  # what CSP does when the instance's proxy checkbox is off
+    demisto.results(os.environ.get("HTTPS_PROXY"))
+"""
+    _, out = run_runner(tmp_path / "a", src, env={"HTTPS_PROXY": "http://egress:3128"})
+    assert out["results"] == ["http://egress:3128"]
+    _, out = run_runner(tmp_path / "b", src)
+    assert out["results"] == [None]
 
 
 def test_mock_exposes_request_and_xsoar_context(tmp_path: Path) -> None:
@@ -109,6 +142,7 @@ def test_mock_exposes_request_and_xsoar_context(tmp_path: Path) -> None:
         "version": demisto.demistoVersion()["version"],
         "exec_type": demisto.executeCommand("x", {})[0]["Type"],
         "get": demisto.get({"a": {"b": 2}}, "a.b"),
+        "internal": json.loads(demisto.internalHttpRequest("GET", "/x")["body"]),
     })
     demisto.setIntegrationContext({"k": 1})
     demisto.results(demisto.getIntegrationContext())
@@ -126,6 +160,7 @@ def test_mock_exposes_request_and_xsoar_context(tmp_path: Path) -> None:
         "version": "8.9.0",
         "exec_type": 4,
         "get": 2,
+        "internal": {"error": "internalHttpRequest is not supported outside XSOAR"},
     }
     assert ctx == {"k": 1}
 

@@ -1,0 +1,124 @@
+{
+  "integration": "GreyNoise",
+  "routes": [
+    {
+      "name": "revoked key (ping)",
+      "source": "content/Packs/GreyNoise/Integrations/GreyNoise/test_data/input_data.py::test_module_data[1] (401 body)",
+      "method": "GET",
+      "host": "api.greynoise.io",
+      "path": "/ping",
+      "headers": {
+        "key": "dbot-replay-revoked-key"
+      },
+      "response": {
+        "status": 401,
+        "body": "forbidden"
+      }
+    },
+    {
+      "name": "revoked key (ip)",
+      "source": "content/Packs/GreyNoise/Integrations/GreyNoise/test_data/input_data.py::test_module_data[1] (401 body)",
+      "method": "GET",
+      "host": "api.greynoise.io",
+      "path": "/v3/ip/71.6.135.131",
+      "headers": {
+        "key": "dbot-replay-revoked-key"
+      },
+      "response": {
+        "status": 401,
+        "body": "forbidden"
+      }
+    },
+    {
+      "name": "test-module ping",
+      "source": "content/Packs/GreyNoise/Integrations/GreyNoise/test_data/input_data.py::test_module_data[0]",
+      "method": "GET",
+      "host": "api.greynoise.io",
+      "path": "/ping",
+      "response": {
+        "status": 200,
+        "body": {
+          "expiration": "2026-01-01",
+          "message": "pong",
+          "offering": "vip"
+        }
+      }
+    },
+    {
+      "name": "ip",
+      "source": "content/Packs/GreyNoise/Integrations/GreyNoise/test_data/input_data.py::valid_ip_response",
+      "method": "GET",
+      "host": "api.greynoise.io",
+      "path": "/v3/ip/71.6.135.131",
+      "response": {
+        "status": 200,
+        "body": {
+          "ip": "71.6.135.131",
+          "business_service_intelligence": {
+            "found": false,
+            "category": "",
+            "name": "",
+            "description": "",
+            "explanation": "",
+            "last_updated": "",
+            "reference": "",
+            "trust_level": ""
+          },
+          "internet_scanner_intelligence": {
+            "last_seen": "2025-06-26",
+            "found": true,
+            "tags": [
+              {
+                "id": "36c75a5a-d4f8-46b3-b597-e0cbbf1ac3a0",
+                "slug": "adb-check",
+                "name": "ADB Check",
+                "description": "IP addresses with this tag have been observed checking for the existence of the Android Debug Bridge protocol.",
+                "category": "activity",
+                "intention": "suspicious",
+                "references": [
+                  "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-1900-12345"
+                ],
+                "cves": [
+                  "CVE-1900-12345"
+                ],
+                "recommend_block": false,
+                "created": "2021-08-26",
+                "updated_at": "2025-06-24T21:35:56.342633Z"
+              }
+            ],
+            "actor": "Shodan.io",
+            "spoofable": false,
+            "classification": "benign",
+            "bot": false,
+            "vpn": false,
+            "vpn_service": "",
+            "tor": false,
+            "metadata": {
+              "asn": "AS10439",
+              "source_country": "United States",
+              "source_country_code": "US",
+              "source_city": "San Diego",
+              "domain": "fiberalley.com",
+              "rdns_parent": "shodan.io",
+              "rdns_validated": false,
+              "organization": "CariNet, Inc.",
+              "category": "hosting",
+              "rdns": "soda.census.shodan.io",
+              "os": "",
+              "region": "California",
+              "mobile": false,
+              "single_destination": false,
+              "destination_countries": [
+                "Brazil"
+              ],
+              "destination_country_codes": [
+                "BR"
+              ]
+            },
+            "last_seen_timestamp": "2025-06-26 12:59:00"
+          }
+        }
+      }
+    }
+  ]
+}

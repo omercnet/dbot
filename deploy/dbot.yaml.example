@@ -30,6 +30,7 @@ instances:
       scan_visibility: private
       integrationReliability: C - Fairly reliable
     allow_hosts: [urlscan.io]
+    policy: {destructive: [url]}  # url submits a public scan here; elsewhere it is a read lookup
 
   - name: otx
     integration: AlienVault OTX v2
@@ -40,8 +41,9 @@ instances:
     allow_hosts: [otx.alienvault.com]
 
 policy:
-  destructive: ["*block*", "*isolate*", "*quarantine*", "*disable*", "*delete*", "*revoke*", "*suspend*", "*unblock*", "*release*", "*-create-*", "*-update-*"]
-  read: ["test-module"]
+  # Defaults plus TI submit/report/scan commands, which write to the vendor (reports, comments, new scans).
+  destructive: ["*block*", "*isolate*", "*quarantine*", "*disable*", "*delete*", "*revoke*", "*suspend*", "*unblock*", "*release*", "*-create-*", "*-update-*", "*-report-*", "*-submit*", "*-add", "*scan"]
+  read: ["test-module", "abuseipdb-check-cidr-block"]  # explicit read overrides win over destructive globs
 
 roles:  # OIDC group -> role
   viewer: [soc-viewers]

@@ -5,7 +5,14 @@ import pytest
 
 from dbot.catalog.models import CommandDef
 from dbot.control import secrets
-from dbot.control.config import ConfigError, InstanceConfig, PolicyConfig, default_allow_hosts, load_config
+from dbot.control.config import (
+    ConfigError,
+    InstanceConfig,
+    PolicyConfig,
+    PolicyOverride,
+    default_allow_hosts,
+    load_config,
+)
 from dbot.control.policy import risk
 
 EXAMPLE = """
@@ -216,3 +223,44 @@ def test_default_policy_covers_spec_globs() -> None:
     assert risk("ad-disable-account", policy) == "destructive"
     assert risk("test-module", policy) == "read"
     assert risk("abuseipdb-check-ip", policy) == "read"
+
+
+@pytest.mark.parametrize(
+    ("command", "inst_read", "inst_destructive", "dangerous", "expected"),
+    [
+        ("fw-block-ip", ["fw-block-*"], [], False, "read"),  # instance read beats global destructive glob
+        ("url", ["url"], ["url"], False, "read"),  # instance read beats instance destructive
+        ("test-module", [], ["test-module"], False, "destructive"),  # instance destructive beats global read
+        ("url", [], ["URL"], False, "destructive"),  # instance destructive, case-insensitive
+        ("purge", ["purge"], [], True, "read"),  # instance read beats dangerous flag
+        ("url", [], [], False, "read"),  # no override falls through to global/default
+        ("purge", [], [], True, "destructive"),
+    ],
+)
+def test_instance_override_precedence(
+    command: str, inst_read: list[str], inst_destructive: list[str], dangerous: bool, expected: str
+) -> None:
+    policy = PolicyConfig(destructive=["*block*"], read=["test-module"])
+    inst = InstanceConfig(
+        name="a", integration="X", policy=PolicyOverride(read=inst_read, destructive=inst_destructive)
+    )
+    assert risk(command, policy, CommandDef(name=command, dangerous=dangerous), inst) == expected
+
+
+def test_instance_override_loads_from_yaml_and_is_scoped(tmp_path: Path) -> None:
+    text = (
+        "instances:\n"
+        "  - {name: scan, integration: urlscan.io, policy: {destructive: [url]}}\n"
+        "  - {name: vt, integration: VirusTotal}\n"
+    )
+    cfg = load_config(_write(tmp_path, text))
+    scan, vt = cfg.instance("scan"), cfg.instance("vt")
+    assert scan is not None
+    assert vt is not None
+    assert risk("url", cfg.policy, None, scan) == "destructive"
+    assert risk("url", cfg.policy, None, vt) == "read"
+
+
+def test_instance_policy_rejects_unknown_keys(tmp_path: Path) -> None:
+    with pytest.raises(ConfigError, match="dangerous"):
+        load_config(_write(tmp_path, "instances:\n  - {name: a, integration: X, policy: {dangerous: [url]}}\n"))

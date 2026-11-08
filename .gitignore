@@ -30,12 +30,11 @@ pytest-of-*/
 # Linting / formatting
 .ruff_cache/
 
-# dbot specific — NEVER commit these (contain secrets)
-config/credentials.yaml
-config/llm.yaml
-config/.dbot-key
-config/dbot.db
-config/.index_cache.json
+# dbot specific: NEVER commit these (operator config, secrets, local state)
+deploy/dbot.yaml
+deploy/oauth2-proxy.cfg
+dbot.yaml
+/config/
 *.log
 
 # OS
@@ -46,12 +45,6 @@ Thumbs.db
 pip-*
 uv-*.lock
 node-compile-cache/
-
-# UI (React/Vite)
-dbot/ui/node_modules/
-dbot/ui/.vite/
-*.tsbuildinfo
-dbot/ui/dist/
 
 # Agent / workspace
 .sisyphus/

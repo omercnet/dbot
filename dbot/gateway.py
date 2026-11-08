@@ -11,7 +11,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel
 
-from dbot.catalog import Catalog, index_content
+from dbot.catalog import Catalog, CommandDef, IntegrationDef, index_content
 from dbot.control import secrets
 from dbot.control.approvals import Approval, ApprovalError, Approvals
 from dbot.control.audit import AuditLog, canonical_json
@@ -22,6 +22,8 @@ from dbot.sandbox.types import CommandResult, ExecRequest, Sandbox
 MAX_ARGS_BYTES = 64 * 1024
 READ_ROLES = frozenset({"analyst", "approver", "agent"})
 REPO_CONTENT_ROOT = Path(__file__).resolve().parent.parent / "content"
+# XSOAR runs `test-module` on every integration even though no YAML lists it.
+TEST_MODULE = CommandDef(name="test-module", description="Test connectivity and credentials")
 
 
 class Actor(BaseModel):
@@ -81,6 +83,15 @@ class Gateway:
             Approvals(),
             AuditLog(),
         )
+
+    def resolve(self, integration: str, command: str) -> tuple[IntegrationDef, CommandDef]:
+        """Catalog lookup, plus the implicit `test-module` of every integration. Raises KeyError."""
+        try:
+            return self.catalog.resolve(f"{integration}.{command}")
+        except KeyError:
+            if command != TEST_MODULE.name:
+                raise
+            return self.catalog.get(integration), TEST_MODULE
 
     def enabled_instances(self, integration: str) -> list[str]:
         return [i.name for i in self.config.instances if i.enabled and i.integration == integration]
@@ -185,12 +196,12 @@ class Gateway:
 
         name = command.removeprefix(f"{inst.integration}.")
         try:
-            integration, command_def = self.catalog.resolve(f"{inst.integration}.{name}")
+            integration, command_def = self.resolve(inst.integration, name)
         except KeyError as e:
             return Denied(reason=f"instance '{instance}' ({inst.integration}): {e.args[0]}")
         audit["command"] = name
 
-        risk = classify(name, self.config.policy, command_def)
+        risk = classify(name, self.config.policy, command_def, inst)
         audit["risk"] = risk
 
         if not actor.roles - {"viewer"}:

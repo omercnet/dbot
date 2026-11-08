@@ -1,0 +1,149 @@
+{
+  "integration": "urlscan.io",
+  "routes": [
+    {
+      "name": "revoked key (submit)",
+      "source": "hand-written from the urlscan.io search API docs (content/Packs/UrlScan has no search test data); error body shape per urlscan API docs",
+      "method": "POST",
+      "host": "urlscan.io",
+      "path": "/api/v1/scan/",
+      "headers": {
+        "API-Key": "dbot-replay-revoked-key"
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "message": "Unauthorized",
+          "description": "The API key supplied is not valid.",
+          "status": 401
+        }
+      }
+    },
+    {
+      "name": "test-module search",
+      "source": "hand-written from the urlscan.io search API docs (content/Packs/UrlScan has no search test data)",
+      "method": "GET",
+      "host": "urlscan.io",
+      "path": "/api/v1/search/",
+      "query": {
+        "q": "ip:\"8.8.8.8\""
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "results": [
+            {
+              "task": {
+                "visibility": "public",
+                "method": "api",
+                "domain": "example.com",
+                "apexDomain": "example.com",
+                "time": "2026-01-02T03:04:05.000Z",
+                "uuid": "00000000-0000-4000-8000-000000000001",
+                "url": "https://example.com/"
+              },
+              "stats": {
+                "uniqIPs": 1,
+                "uniqCountries": 1,
+                "dataLength": 1256,
+                "encodedDataLength": 800,
+                "requests": 1
+              },
+              "page": {
+                "country": "US",
+                "server": "ECS",
+                "ip": "93.184.215.14",
+                "mimeType": "text/html",
+                "title": "Example Domain",
+                "url": "https://example.com/",
+                "tlsValidDays": 364,
+                "tlsAgeDays": 10,
+                "tlsValidFrom": "2026-01-01T00:00:00.000Z",
+                "domain": "example.com",
+                "apexDomain": "example.com",
+                "asnname": "EDGECAST, US",
+                "asn": "AS15133",
+                "tlsIssuer": "DigiCert Global G2 TLS RSA SHA256 2020 CA1",
+                "status": "200"
+              },
+              "_id": "00000000-0000-4000-8000-000000000001",
+              "_score": null,
+              "sort": [
+                1767323045000,
+                "00000000-0000-4000-8000-000000000001"
+              ],
+              "result": "https://urlscan.io/api/v1/result/00000000-0000-4000-8000-000000000001/",
+              "screenshot": "https://urlscan.io/screenshots/00000000-0000-4000-8000-000000000001.png"
+            }
+          ],
+          "total": 1,
+          "took": 5,
+          "has_more": false
+        }
+      }
+    },
+    {
+      "name": "domain search",
+      "source": "hand-written from the urlscan.io search API docs (content/Packs/UrlScan has no search test data)",
+      "method": "GET",
+      "host": "urlscan.io",
+      "path": "/api/v1/search/",
+      "query": {
+        "q": "domain:example.com"
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "results": [
+            {
+              "task": {
+                "visibility": "public",
+                "method": "api",
+                "domain": "example.com",
+                "apexDomain": "example.com",
+                "time": "2026-01-02T03:04:05.000Z",
+                "uuid": "00000000-0000-4000-8000-000000000001",
+                "url": "https://example.com/"
+              },
+              "stats": {
+                "uniqIPs": 1,
+                "uniqCountries": 1,
+                "dataLength": 1256,
+                "encodedDataLength": 800,
+                "requests": 1
+              },
+              "page": {
+                "country": "US",
+                "server": "ECS",
+                "ip": "93.184.215.14",
+                "mimeType": "text/html",
+                "title": "Example Domain",
+                "url": "https://example.com/",
+                "tlsValidDays": 364,
+                "tlsAgeDays": 10,
+                "tlsValidFrom": "2026-01-01T00:00:00.000Z",
+                "domain": "example.com",
+                "apexDomain": "example.com",
+                "asnname": "EDGECAST, US",
+                "asn": "AS15133",
+                "tlsIssuer": "DigiCert Global G2 TLS RSA SHA256 2020 CA1",
+                "status": "200"
+              },
+              "_id": "00000000-0000-4000-8000-000000000001",
+              "_score": null,
+              "sort": [
+                1767323045000,
+                "00000000-0000-4000-8000-000000000001"
+              ],
+              "result": "https://urlscan.io/api/v1/result/00000000-0000-4000-8000-000000000001/",
+              "screenshot": "https://urlscan.io/screenshots/00000000-0000-4000-8000-000000000001.png"
+            }
+          ],
+          "total": 1,
+          "took": 5,
+          "has_more": false
+        }
+      }
+    }
+  ]
+}

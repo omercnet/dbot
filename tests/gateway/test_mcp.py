@@ -85,3 +85,11 @@ async def test_list_instances_tool(gateway: Gateway) -> None:
     rows = await call(gateway, "list_instances", {})
     assert {r["name"] for r in rows} == {"fake", "fake-off", "fake-nokey"}
     assert all("params" not in r for r in rows)
+
+
+async def test_schema_for_implicit_test_module(gateway: Gateway) -> None:
+    schema = await call(gateway, "get_tool_schema", {"tool_name": "Other.test-module"})
+    assert schema["integration"] == "Other"
+    assert schema["arguments"] == []
+    missing = await call(gateway, "get_tool_schema", {"tool_name": "Nope.test-module"})
+    assert "not found" in missing["error"]

@@ -50,6 +50,13 @@ class _Strict(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class PolicyOverride(_Strict):
+    """Per-instance globs; they win over the global policy for this instance only."""
+
+    read: list[str] = Field(default_factory=list)
+    destructive: list[str] = Field(default_factory=list)
+
+
 class InstanceConfig(_Strict):
     """One configured integration instance."""
 
@@ -58,6 +65,7 @@ class InstanceConfig(_Strict):
     params: dict[str, Any] = Field(default_factory=dict)
     allow_hosts: list[str] | None = None
     enabled: bool = True
+    policy: PolicyOverride = Field(default_factory=PolicyOverride)
 
     @field_validator("params")
     @classmethod

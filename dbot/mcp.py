@@ -6,7 +6,7 @@ from typing import Any
 
 from fastmcp import FastMCP
 
-from dbot.gateway import Actor, Denied, Gateway, Pending
+from dbot.gateway import TEST_MODULE, Actor, Denied, Gateway, Pending
 
 MAX_FIELD_BYTES = 20 * 1024
 TRUNCATED = "...[truncated]"
@@ -51,7 +51,23 @@ def build_mcp(gateway: Gateway) -> FastMCP:
         try:
             schema = gateway.catalog.get_schema(tool_name)
         except KeyError as e:
-            return {"error": e.args[0]}
+            name, sep, command = tool_name.rpartition(".")
+            if not sep or command != TEST_MODULE.name:
+                return {"error": e.args[0]}
+            try:
+                integration, _ = gateway.resolve(name, command)
+            except KeyError as e2:
+                return {"error": e2.args[0]}
+            schema = {
+                "tool_name": tool_name,
+                "integration": integration.name,
+                "display": integration.display,
+                "pack": integration.pack,
+                "description": TEST_MODULE.description,
+                "dangerous": False,
+                "arguments": [],
+                "outputs": [],
+            }
         return {**schema, "instances": gateway.enabled_instances(schema["integration"])}
 
     @mcp.tool

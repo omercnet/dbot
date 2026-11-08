@@ -17,7 +17,17 @@ import types
 from typing import Any
 
 MAX_TRACEBACK_LINES = 40
-_TOP_LEVEL_MAIN = re.compile(r"^main\(\)", re.MULTILINE)
+# The integration calls main() itself: an unguarded top-level call, or a guard matching XSOAR's __name__.
+_SELF_STARTING = re.compile(r"^(main\(|if __name__\b.*\bbuiltins\b)", re.MULTILINE)
+XSOAR_NAME = "builtins"  # what XSOAR py3 sets; nearly every integration guard checks for it
+
+
+def _in_main(tb: Any) -> bool:
+    while tb is not None:
+        if tb.tb_frame.f_code.co_name == "main":
+            return True
+        tb = tb.tb_next
+    return False
 
 
 def _ensure_distutils() -> None:
@@ -114,6 +124,7 @@ def run(script: str, brand: str, raw_request: str) -> dict[str, Any]:
     # XSOAR runs CSP, ApiModules and the integration in one namespace; alias the module names to it.
     module = types.ModuleType("CommonServerPython")
     module.__file__ = script
+    module.__dict__["__name__"] = XSOAR_NAME
     sys.modules["CommonServerPython"] = module
     sys.modules["CommonServerUserPython"] = module
 
@@ -122,12 +133,9 @@ def run(script: str, brand: str, raw_request: str) -> dict[str, Any]:
         with open(script, encoding="utf-8") as f:
             source = f.read()
         exec(compile(source, script, "exec"), module.__dict__)  # noqa: S102 - running integration code is the job
-        if os.environ.get("HTTPS_PROXY"):
-            # The sandbox egress proxy must stay in effect even when the instance has proxy disabled.
-            module.__dict__["skip_proxy"] = lambda: None
         phase = "main"
         entry = module.__dict__.get("main")
-        if callable(entry) and not _TOP_LEVEL_MAIN.search(source):
+        if callable(entry) and not _SELF_STARTING.search(source):
             entry()
     except SystemExit as e:
         out["exit"] = "sysexit"
@@ -135,7 +143,9 @@ def run(script: str, brand: str, raw_request: str) -> dict[str, Any]:
             out["error"] = "SystemExit: " + str(e.code)
     except BaseException as e:
         # Module-level code also reads params; only failures to load code or resolve names are import errors.
-        is_import = phase == "import" and isinstance(e, (ImportError, SyntaxError, NameError))
+        # A guard-started main() runs during exec, so look for a main frame in the traceback.
+        loading = phase == "import" and not _in_main(e.__traceback__)
+        is_import = loading and isinstance(e, (ImportError, SyntaxError, NameError))
         out["exit"] = "import" if is_import else "exception"
         out["error"] = type(e).__name__ + ": " + str(e)
         tb = traceback.format_exc().splitlines()[-MAX_TRACEBACK_LINES:]

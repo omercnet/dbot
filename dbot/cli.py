@@ -17,7 +17,7 @@ app.add_typer(egress_app, name="egress")
 
 
 @app.command()
-def serve(host: str = "0.0.0.0", port: int = 8080) -> None:  # noqa: S104 - runs behind oauth2-proxy
+def serve(host: str | None = None, port: int | None = None) -> None:
     """Run the web app (ingest, approvals, alerts)."""
     from dbot.web.app import main
 

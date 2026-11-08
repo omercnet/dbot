@@ -1,0 +1,94 @@
+{
+  "integration": "AbuseIPDB",
+  "routes": [
+    {
+      "name": "revoked key",
+      "source": "hand-written from the AbuseIPDB v2 API docs error format",
+      "method": "GET",
+      "host": "api.abuseipdb.com",
+      "path": "/api/v2/check",
+      "headers": {
+        "Key": "dbot-replay-revoked-key"
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "errors": [
+            {
+              "detail": "Authentication failed. Your API key is either missing, incorrect, or revoked. Note: The APIv2 key differs from the APIv1 key.",
+              "status": 401
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "test-module check",
+      "source": "content/Packs/AbuseDB/Integrations/AbuseDB/AbuseDB_test.py::test_check_ip_command expected_res (ipAddress set to the test IP)",
+      "method": "GET",
+      "host": "api.abuseipdb.com",
+      "path": "/api/v2/check",
+      "query": {
+        "ipAddress": "127.0.0.2"
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "ipAddress": "127.0.0.2",
+            "abuseConfidencePercentage": 0,
+            "abuseConfidenceScore": 0,
+            "countryCode": "US",
+            "countryName": "United States",
+            "usageType": "dummy",
+            "isp": "dummy",
+            "domain": "dummy.com",
+            "totalReports": 0,
+            "numDistinctUsers": 0,
+            "lastReportedAt": null,
+            "reports": [],
+            "hostnames": [],
+            "ipVersion": 4,
+            "isPublic": false,
+            "isTor": false,
+            "isWhitelisted": false
+          }
+        }
+      }
+    },
+    {
+      "name": "ip check",
+      "source": "content/Packs/AbuseDB/Integrations/AbuseDB/AbuseDB_test.py::test_check_ip_command expected_res",
+      "method": "GET",
+      "host": "api.abuseipdb.com",
+      "path": "/api/v2/check",
+      "query": {
+        "ipAddress": "1.1.1.1"
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "ipAddress": "1.1.1.1",
+            "abuseConfidencePercentage": 0,
+            "abuseConfidenceScore": 0,
+            "countryCode": "US",
+            "countryName": "United States",
+            "usageType": "dummy",
+            "isp": "dummy",
+            "domain": "dummy.com",
+            "totalReports": 0,
+            "numDistinctUsers": 0,
+            "lastReportedAt": null,
+            "reports": [],
+            "hostnames": [],
+            "ipVersion": 4,
+            "isPublic": true,
+            "isTor": false,
+            "isWhitelisted": false
+          }
+        }
+      }
+    }
+  ]
+}

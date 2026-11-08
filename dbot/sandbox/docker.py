@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import logging
 import time
 import uuid
 from pathlib import Path
@@ -15,6 +16,10 @@ PULL_TIMEOUT_S = 900.0
 KILL_GRACE_S = 10.0
 STDERR_TAIL = 500
 PARAM_TYPE_BOOLEAN = 8
+SANDBOX_USER = "65534:65534"  # nobody; demisto images default to root
+CA_PATH = "/etc/dbot/ca.pem"
+
+logger = logging.getLogger(__name__)
 
 
 def _entry(raw: Any) -> Entry:
@@ -97,12 +102,16 @@ def _last_json_line(stdout: bytes) -> dict[str, Any] | None:
 
 
 def default_params(integration: IntegrationDef) -> dict[str, Any]:
-    """YAML defaults for params the instance did not set, typed like the XSOAR server sends them."""
+    """YAML defaults for params the instance did not set, typed like the XSOAR server sends them.
+
+    XSOAR sends every checkbox (type 8) param, unchecked ones as False.
+    """
     out: dict[str, Any] = {}
     for p in integration.params:
-        if p.default is None:
-            continue
-        out[p.name] = p.default.strip().lower() == "true" if p.type == PARAM_TYPE_BOOLEAN else p.default
+        if p.type == PARAM_TYPE_BOOLEAN:
+            out[p.name] = (p.default or "").strip().lower() == "true"
+        elif p.default is not None:
+            out[p.name] = p.default
     return out
 
 
@@ -117,14 +126,18 @@ class DockerSandbox:
         memory: str = "512m",
         network: str | None = None,
         docker: str = "docker",
+        ca_bundle: Path | None = None,
     ) -> None:
         self.content_root = Path(content_root)
         self.cpus = cpus
         self.memory = memory
         self.network = network
         self.docker = docker
+        self.ca_bundle = Path(ca_bundle).resolve() if ca_bundle else None
         self._present: set[str] = set()
         self._pull_locks: dict[str, asyncio.Lock] = {}
+        if network is None:
+            logger.warning("sandboxes have unrestricted egress; set DBOT_SANDBOX_NETWORK")
 
     async def _exec(self, *args: str, timeout: float) -> tuple[int, bytes]:
         proc = await asyncio.create_subprocess_exec(
@@ -161,6 +174,7 @@ class DockerSandbox:
             "run", "--rm", "-i",
             "--name", name,
             "--read-only",
+            "--user", SANDBOX_USER,
             "--tmpfs", "/tmp",  # noqa: S108 - container-private tmpfs
             "--workdir", "/tmp",  # noqa: S108
             "--cap-drop", "ALL",
@@ -175,6 +189,10 @@ class DockerSandbox:
         if proxy:
             for var in ("HTTPS_PROXY", "HTTP_PROXY", "https_proxy", "http_proxy"):
                 argv += ["-e", f"{var}={proxy}"]
+        if self.ca_bundle:
+            # Extra trust root, e.g. a TLS-inspecting egress proxy or the replay proxy's CA. Must be world-readable.
+            argv += ["-v", f"{self.ca_bundle}:{CA_PATH}:ro", "-e", f"REQUESTS_CA_BUNDLE={CA_PATH}"]
+            argv += ["-e", f"SSL_CERT_FILE={CA_PATH}"]
         argv += ["-v", f"{mount_dir}:/dbot:ro", image, "python", "/dbot/runner.py", f"/dbot/{SCRIPT_NAME}"]
         argv.append(integration_name)
         return argv

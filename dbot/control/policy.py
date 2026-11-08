@@ -4,7 +4,7 @@ from fnmatch import fnmatchcase
 from typing import Literal
 
 from dbot.catalog.models import CommandDef
-from dbot.control.config import PolicyConfig
+from dbot.control.config import InstanceConfig, PolicyConfig
 
 Risk = Literal["read", "destructive"]
 
@@ -14,9 +14,19 @@ def _matches(command: str, patterns: list[str]) -> bool:
     return any(fnmatchcase(name, p.lower()) for p in patterns)
 
 
-def risk(command: str, policy: PolicyConfig, command_def: CommandDef | None = None) -> Risk:
-    """Classify ``command``: ``policy.read`` overrides win, then ``policy.destructive`` globs,
-    then the integration's ``dangerous: true`` flag, else read. Globs match the command name case-insensitively."""
+def risk(
+    command: str,
+    policy: PolicyConfig,
+    command_def: CommandDef | None = None,
+    instance: InstanceConfig | None = None,
+) -> Risk:
+    """Classify ``command``. Precedence: instance read, instance destructive, global read, global destructive,
+    the integration's ``dangerous: true`` flag, else read. Globs match the command name case-insensitively."""
+    if instance is not None:
+        if _matches(command, instance.policy.read):
+            return "read"
+        if _matches(command, instance.policy.destructive):
+            return "destructive"
     if _matches(command, policy.read):
         return "read"
     if _matches(command, policy.destructive):

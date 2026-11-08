@@ -1,29 +1,23 @@
 [project]
 name = "dbot"
 dynamic = ["version"]
-description = "Run 1,100+ XSOAR security integrations as MCP tools. No XSOAR required."
+description = "XSOAR content runtime for SOCs: sandboxed integrations behind an audited gateway, exposed over MCP and an alert responder."
 readme = "README.md"
 requires-python = ">=3.13"
 license = "MIT"
-keywords = ["mcp", "xsoar", "security", "integrations", "demisto"]
+keywords = ["mcp", "xsoar", "security", "integrations", "demisto", "soc"]
 dependencies = [
-    "cryptography>=42.0",
     "fastmcp>=2.10",
     "pydantic>=2.0",
     "pydantic-ai>=1.0",
     "pyyaml>=6.0",
+    "starlette>=0.40",
     "typer>=0.12",
-    "rich>=13.0",
-    "watchdog>=4.0",
     "uvicorn>=0.30",
 ]
 
 [project.scripts]
 dbot = "dbot.cli:app"
-dbot-chat = "dbot.agent.cli:chat_app"
-dbot-respond = "dbot.agent.cli:respond_app"
-dbot-watch = "dbot.agent.cli:watch_app"
-dbot-web = "dbot.agent.cli:web_app_typer"
 
 [project.urls]
 Documentation = "https://github.com/omercnet/dbot#readme"
@@ -44,7 +38,7 @@ dev = [
     "pytest-cov>=5.0",
     "ruff>=0.11",
     "mypy>=1.10",
-    "dateparser>=1.0",
+    "mitmproxy>=12.3",
 ]
 
 # ── Ruff ──────────────────────────────────────────────────────────────
@@ -94,15 +88,6 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["S101", "S105", "S106", "S108", "ARG", "PT004"]
-"dbot/agent/cli.py" = ["B008", "T20"]  # typer.Option() in defaults + print for CLI
-"dbot/agent/web.py" = ["ARG001", "PLW0603"]  # Starlette handler sig + lazy module __getattr__
-"dbot/agent/guardrails.py" = ["ARG005"]  # lambda signature required by approval_required()
-"dbot/runtime/runner.py" = ["T20"]  # subprocess output requires print
-"dbot/runtime/common_server.py" = ["PLW0603"]  # bootstrap guard requires global
-"dbot/runtime/demistomock.py" = ["S108"]  # mock uses /tmp paths intentionally
-"dbot/config/api.py" = ["PLW0603"]  # module-level state pattern (init_api_state)
-"dbot/agent/ingestion/watcher.py" = ["ARG005"]  # watchdog callback signature
-"dbot/registry/indexer.py" = ["S603", "S607"]  # subprocess.run for git hash is intentional
 
 [tool.ruff.lint.isort]
 known-first-party = ["dbot"]
@@ -134,7 +119,6 @@ warn_unused_configs = true
 
 [tool.coverage.run]
 source = ["dbot"]
-omit = ["dbot/runtime/runner.py"]
 
 [tool.coverage.report]
 exclude_lines = [

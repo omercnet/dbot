@@ -5,6 +5,7 @@ reads its command/args/params from here and its output is captured by `results()
 """
 
 # ruff: noqa: N802, N803, N816, PLW0603, S108
+import json
 import uuid
 from typing import Any
 
@@ -264,7 +265,8 @@ def executeCommandBatch(commands_list: Any) -> list[dict[str, Any]]:
 
 
 def internalHttpRequest(method: str, uri: str, body: Any = None) -> dict[str, Any]:
-    return {"statusCode": 501, "body": "internalHttpRequest is not supported outside XSOAR"}
+    # Callers json.loads() the body, so it must be JSON even for the error.
+    return {"statusCode": 501, "body": json.dumps({"error": "internalHttpRequest is not supported outside XSOAR"})}
 
 
 def createIndicators(indicators_batch: Any, noUpdate: bool = False) -> None:

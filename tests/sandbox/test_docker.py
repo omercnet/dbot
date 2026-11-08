@@ -78,17 +78,25 @@ async def test_microsoft_apimodule_integration_gets_past_import() -> None:
     assert "not implemented" in r.error
 
 
-async def test_timeout_kills_container(tmp_path: Path) -> None:
+async def test_timeout_kills_container(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     integ = make_content(tmp_path, "import time\ndef main():\n    time.sleep(120)\n")
     sandbox = DockerSandbox(tmp_path)
     await sandbox.ensure_image(integ.dockerimage)
-    before = dbot_containers()
+    killed: list[str] = []
+    real_kill = sandbox._kill
+
+    async def record_kill(name: str) -> None:
+        killed.append(name)
+        await real_kill(name)
+
+    monkeypatch.setattr(sandbox, "_kill", record_kill)
     start = time.monotonic()
     r = await sandbox.run(integ, ExecRequest(command="x", timeout_s=3))
     elapsed = time.monotonic() - start
     assert r.error_kind == "timeout"
     assert elapsed < 3 + 2
-    assert dbot_containers() - before == set()
+    assert len(killed) == 1
+    assert killed[0] not in dbot_containers()
 
 
 async def test_stray_stdout_does_not_break_protocol(tmp_path: Path) -> None:
@@ -104,6 +112,35 @@ def main():
     assert r.status == "ok", r.error
     assert r.context == {"T": {"v": 1}}
     assert r.entries[0].human_readable == "fine"
+
+
+async def test_runs_as_non_root_with_writable_home(tmp_path: Path) -> None:
+    src = """import os
+def main():
+    path = os.path.join(os.environ["HOME"], "probe.txt")
+    with open(path, "w") as f:
+        f.write("x")
+    demisto.results(f"{os.getuid()} {os.path.exists(path)}")
+"""
+    integ = make_content(tmp_path, src)
+    r = await DockerSandbox(tmp_path).run(integ, ExecRequest(command="x"))
+    assert r.status == "ok", r.error
+    assert r.entries[0].contents == "65534 True"
+
+
+async def test_ca_bundle_is_mounted_and_trusted_by_env(tmp_path: Path) -> None:
+    ca = tmp_path / "ca.pem"
+    ca.write_text("TEST-CA")
+    ca.chmod(0o644)
+    src = """import os
+def main():
+    path = os.environ["REQUESTS_CA_BUNDLE"]
+    demisto.results(path + " " + os.environ["SSL_CERT_FILE"] + " " + open(path).read())
+"""
+    integ = make_content(tmp_path / "content", src)
+    r = await DockerSandbox(tmp_path / "content", ca_bundle=ca).run(integ, ExecRequest(command="x"))
+    assert r.status == "ok", r.error
+    assert r.entries[0].contents == "/etc/dbot/ca.pem /etc/dbot/ca.pem TEST-CA"
 
 
 async def test_oom_is_killed(tmp_path: Path) -> None:

@@ -1,281 +1,149 @@
 # dbot
 
-> Run 1,000+ XSOAR security integrations as MCP tools. No XSOAR required.
+dbot is an XSOAR content runtime for SOCs. It runs integrations from
+[demisto/content](https://github.com/demisto/content) without XSOAR. Each command runs in a throwaway container built
+from the integration's own docker image, behind a gateway that checks roles, holds destructive commands for human
+approval, and writes a hash-chained audit log.
 
-dbot is an open-source IR agent and MCP server that takes the entire
-[demisto/content](https://github.com/demisto/content) integration library
-(~1,100 security tool integrations) and runs them standalone -- no XSOAR,
-no Cortex, no license.
+You can reach the gateway in two ways:
 
-It ships as both an **MCP server** (for Claude Desktop, PydanticAI, or any
-MCP client) and a **standalone IR agent** with chat, autonomous responder,
-and web UI.
-
----
-
-## Quickstart
-
-```bash
-# Clone + setup
-git clone https://github.com/omercnet/dbot.git && cd dbot
-git submodule update --init
-hatch env create
-
-# Launch web UI
-hatch run dbot-web
-# -> http://127.0.0.1:7932           (chat UI, needs LLM API key)
-# -> http://127.0.0.1:7932/settings  (configure everything via browser)
-```
-
-See [docs/quickstart.md](docs/quickstart.md) for the full setup guide.
-
----
-
-## Four Ways to Use dbot
-
-### 1. Web UI (recommended for getting started)
-
-```bash
-OPENAI_API_KEY=sk-... hatch run dbot-web
-```
-
-Opens a React SPA at `http://127.0.0.1:7932` with:
-- Chat with tool call visualization (collapsible input/output)
-- Model selector dropdown
-- Streaming responses
-- Settings page at `/settings` (LLM config, guardrails, credentials, packs)
-
-### 2. Interactive Chat (terminal)
-
-```bash
-OPENAI_API_KEY=sk-... hatch run dbot-chat
-```
-
-Terminal REPL for IR investigations. Multi-turn conversation with history.
-
-### 3. Autonomous Responder
-
-```bash
-hatch run dbot-respond alert.json --output markdown
-```
-
-Feeds an alert JSON file to the agent. It autonomously investigates using
-available tools and produces a structured IR report (markdown, JSON, or JSONL).
-
-### 4. MCP Server (for external clients)
-
-```bash
-hatch run python -m dbot.server
-```
-
-Stdio MCP server exposing 3 tools (`search_tools`, `get_tool_schema`,
-`invoke_tool`) for Claude Desktop, PydanticAI, or any MCP client.
-
----
+- **MCP**: `dbot mcp` serves the integrations as MCP tools over stdio, for Claude, opencode or any other MCP client.
+- **Responder**: signed webhook alerts go into a queue. A pydantic-ai agent enriches each one through the gateway and
+  writes an IR report with a verdict, evidence, the actions it took, and the actions waiting for approval.
 
 ## Architecture
 
 ```
-            User / Alert Source
-                   |
-        +----------+----------+
-        |                     |
-   dbot-web/chat         dbot-respond
-   (interactive)         (autonomous)
-        |                     |
-   ChatAgent            ResponderAgent
-        |                     |
-        +----------+----------+
-                   |
-          FunctionToolset (native)
-          +-- search_tools()
-          +-- get_tool_schema()
-          +-- invoke_tool()
-                   |
-          +--------+--------+
-          |                 |
-       Catalog          Executor
-       (YAML index)     (subprocess)
-          |                 |
-     demisto/content    demistomock
+ SIEM / EDR --HMAC--> POST /ingest/{source} --> alert queue (SQLite)
+                                                   |
+                                                   v
+                                     dbot worker (responder agent)
+                                                   |
+ MCP client --stdio--> dbot mcp ---+               |
+ dbot invoke (CLI) ----------------+---> Gateway <-+
+                                         | instance + command check, role check,
+                                         | risk policy -> approval, secrets, audit
+                                         v
+                                 docker run (one container per command,
+                                 integration's own image, read-only, no caps)
+                                         |
+                                         v
+                                 squid egress proxy (allowlist) --> vendor APIs
+
+ Browser --> oauth2-proxy (OIDC) --> dbot serve: /approvals, /alerts, /metrics
 ```
 
-The agent uses **native PydanticAI tools** (not MCP) for zero-overhead
-direct Python calls. The MCP server exists separately for external clients.
+The gateway is the only code that starts a sandbox. More detail: [docs/architecture.md](docs/architecture.md).
 
----
+## Quickstart (local)
 
-## Project Structure
-
-```
-dbot/
-+-- dbot/
-|   +-- server.py              # FastMCP entrypoint (external clients)
-|   +-- audit.py               # JSON-lines audit logger
-|   +-- agent/
-|   |   +-- chat.py            # ChatAgent (interactive + streaming)
-|   |   +-- responder.py       # ResponderAgent (autonomous + HITL)
-|   |   +-- guardrails.py      # FunctionToolset + FilteredToolset
-|   |   +-- models.py          # Alert, IRReport, Verdict, Severity
-|   |   +-- deps.py            # IRDeps (RunContext dependencies)
-|   |   +-- report.py          # Markdown/JSON/JSONL report renderer
-|   |   +-- web.py             # Web UI (Starlette + React SPA + settings)
-|   |   +-- cli.py             # CLI: dbot-chat, dbot-respond, dbot-watch, dbot-web
-|   |   +-- ingestion/         # Alert loaders (file, stdin, watchdog)
-|   +-- config/
-|   |   +-- db.py              # SQLite config store
-|   |   +-- encryption.py      # Fernet credential encryption
-|   |   +-- api.py             # Settings REST API (10 routes)
-|   |   +-- settings.html      # Settings UI (self-contained)
-|   |   +-- models.py          # Config section Pydantic models
-|   +-- runtime/               # demistomock shim, CSP loader, executor
-|   +-- registry/              # YAML indexer, search catalog
-|   +-- credentials/           # Credential store
-+-- content/                   # git submodule -> demisto/content
-+-- config/                    # dbot.db, .dbot-key, credentials.yaml
--- tests/                     # 307 tests
-+-- docs/
--- dbot/ui/                   # React SPA (Vite + TypeScript)
-|   +-- src/                   # App.tsx, main.tsx
-|   +-- package.json           # @ai-sdk/react, react 19, vite, biome
-|   +-- vite.config.ts
-|   +-- tsconfig.json
-|   +-- PROTOCOL.md            # Vercel AI DSP wire format
--- biome.json                 # JS/TS lint + format config
--- .editorconfig              # Cross-editor settings
--- .pre-commit-config.yaml    # 11 pre-commit hooks
--- .github/workflows/ci.yml   # GitHub Actions CI
-+-- pyproject.toml
-```
-
----
-
-## Development
-
-dbot uses [hatch](https://hatch.pypa.io/) for Python and npm for the React frontend.
-
-### Quick start
-
-```bash
-hatch env create                   # set up Python env
-cd dbot/ui && npm install && cd ..  # install frontend deps
-hatch run hooks                    # install pre-commit hooks
-hatch run check                    # verify everything works
-```
-
-### Running locally
-
-**Production-like** (static UI build + server):
-
-```bash
-hatch run dev              # builds UI, starts server at http://127.0.0.1:7932
-```
-
-**Frontend development** (hot reload — two terminals):
-
-```bash
-# Terminal 1: Python API server
-hatch run dev-api          # starts backend at :7932
-
-# Terminal 2: Vite dev server with HMR
-cd dbot/ui && npm run dev  # starts at :5173, proxies /api/* to :7932
-```
-
-Open `http://localhost:5173` for live-reloading frontend development.
-Open `http://localhost:7932` for the production build (after `hatch run build-ui`).
-
-### Commands
-
-| Command | What it does |
-|---|---|
-| `hatch run dev` | Build UI + start server (production-like) |
-| `hatch run dev-api` | Start Python server only (pair with `npm run dev`) |
-| `hatch run test` | Full Python test suite (307 tests) |
-| `hatch run test-quick` | Skip integration tests |
-| `hatch run test-ui` | Frontend tests (vitest) |
-| `hatch run lint` | ruff check + format |
-| `hatch run lint-ui` | biome ci + tsc |
-| `hatch run fmt` | Autofix Python |
-| `hatch run fmt-ui` | Autofix frontend |
-| `hatch run build-ui` | npm run build |
-| `hatch run typecheck` | mypy |
-| `hatch run check` | Dev gate: ruff + biome + tsc + tests |
-| `hatch run check-strict` | Dev gate + mypy |
-| `hatch run ci` | Full CI pipeline |
-| `hatch run hooks` | Install pre-commit hooks |
-
-### Frontend (dbot/ui/)
-
-```bash
-npm run dev      # vite dev server with HMR, proxies /api to :7932
-npm run build    # tsc + vite production build
-npm run test     # vitest
-npm run lint     # biome check
-npm run check    # biome ci + tsc
-npm run format   # biome format
-```
-
----
-
-## Stack
-
-| Concern | Choice |
-|---------|--------|
-| Agent framework | [PydanticAI](https://github.com/pydantic/pydantic-ai) |
-| MCP server | [FastMCP](https://github.com/jlowin/fastmcp) |
-| Integration source | [demisto/content](https://github.com/demisto/content) (MIT) |
-| Config/credentials | SQLite + Fernet encryption |
-| Web UI | React SPA (Vite + TypeScript) + `@ai-sdk/react` + custom settings page |
-| Execution model | Subprocess per invocation (in-process for dev) |
-| Python | 3.13+ |
-| Frontend | React 19, Vite 6, TypeScript 5.9, @ai-sdk/react |
-| JS/TS linting | [Biome](https://biomejs.dev/) 2.4 |
-| Code quality | Ruff (20 rule sets), Mypy, pre-commit (11 hooks) |
-| CI | GitHub Actions (lint, mypy, test matrix, UI build) |
-| Packaging | hatch + uv + pyproject.toml |
-
----
-
-## CI / Quality
-
-Four GitHub Actions jobs run on every push and PR:
-
-| Job | What it runs |
-|-----|--------------|
-| lint | ruff, biome, tsc |
-| mypy | strict type-checking |
-| test | pytest matrix (Python 3.13 + 3.14) |
-| ui-build | npm run build |
-
-Pre-commit hooks (install with `hatch run hooks`) enforce ruff, biome,
-trailing whitespace, merge conflict markers, large files, private keys,
-debug statements, and YAML/TOML validity before every commit.
-
----
-
-## Contributing
+You need Python 3.13, [uv](https://docs.astral.sh/uv/), and a local docker daemon.
 
 ```bash
 git clone https://github.com/omercnet/dbot.git && cd dbot
-git submodule update --init
-hatch env create
-cd dbot/ui && npm install && cd ../..
-hatch run hooks     # install pre-commit hooks
-hatch run check     # must stay green before opening a PR
+git submodule update --init   # demisto/content
+uv sync
+
+cat > dbot.yaml <<'EOF'
+instances:
+  - name: abuseipdb
+    integration: AbuseIPDB
+    params:
+      server: https://api.abuseipdb.com/api/v2/
+      credentials: {password: env://ABUSEIPDB_API_KEY}
+EOF
+export DBOT_CONFIG=$PWD/dbot.yaml DBOT_DATA_DIR=$PWD/data ABUSEIPDB_API_KEY=...
+
+uv run dbot config check                       # resolves every secret; prints OK or an error, never a value
+uv run dbot invoke abuseipdb ip -a ip=8.8.8.8 -r "triage"   # one command through the gateway, as $USER
+uv run dbot audit verify data/audit            # OK, or the first broken seq
+uv run dbot mcp                                # MCP over stdio; point your MCP client at this command
 ```
 
----
+The first `invoke` pulls the integration's image (for example `demisto/python3`). Without `DBOT_SANDBOX_NETWORK`,
+dbot warns that sandboxes have unrestricted egress. That is acceptable on a laptop, but not in production.
 
+An MCP client config entry looks like this:
 
-## Documentation
+```json
+{"mcpServers": {"dbot": {"command": "uv", "args": ["run", "--directory", "/path/to/dbot", "dbot", "mcp"],
+  "env": {"DBOT_CONFIG": "/path/to/dbot.yaml", "DBOT_DATA_DIR": "/path/to/data", "ABUSEIPDB_API_KEY": "..."}}}}
+```
 
-- [Quickstart](docs/quickstart.md) -- full setup guide
-- [Architecture](docs/architecture.md) -- how dbot works internally
-- [Credentials](docs/credentials.md) -- configuring API keys and secrets
-- [Integrations](docs/integrations.md) -- adding and validating integrations
+The MCP tools are `search_tools`, `get_tool_schema`, `list_instances`, `invoke_tool`, and `get_approval`.
 
----
+## Deployment (compose)
+
+`deploy/compose.yml` runs `dbot serve`, `dbot worker`, oauth2-proxy and squid:
+
+```bash
+cd deploy
+cp dbot.yaml.example dbot.yaml && cp oauth2-proxy.cfg.example oauth2-proxy.cfg
+# create .env with the API keys, DBOT_INGEST_SECRET, DBOT_CSRF_SECRET, OAUTH2_PROXY_* and the LLM provider key
+docker compose run --rm dbot egress write /dev/stdout > allowlist.txt
+sudo install -d -o 10001 /var/cache/dbot
+CONTENT_COMMIT=$(git rev-parse HEAD:content) docker compose up -d --build
+```
+
+See [docs/deployment.md](docs/deployment.md) for the networks, every `DBOT_*` variable, and the trust boundary.
+
+## Security model
+
+- **Approvals.** Commands matching the destructive policy (block, isolate, disable, delete, and so on) return
+  `approval_required`. An approver must approve the request on `/approvals`, and nobody can approve their own
+  request. An approval is single use, expires after 1 hour, and is bound to `sha256(instance, command, args)`.
+- **Audit chain.** Every invocation, denial, approval decision and accepted ingest is appended to
+  `DBOT_DATA_DIR/audit/audit-YYYY-MM-DD.jsonl`. Each record carries `seq`, `prev_hash` and `hash`.
+  `dbot audit verify` detects edited, dropped or reordered lines.
+- **Secrets.** Params use `env://NAME` or `file:///run/secrets/name`. There is no secret store and no HTTP API for
+  credentials. Resolved values are passed only to the sandbox, and are redacted from results, logs and the audit log.
+- **Docker socket.** `dbot` and `worker` mount `/var/run/docker.sock`. Whoever controls those containers controls
+  the host. Run the stack on a dedicated VM, or point `DOCKER_HOST` at a remote rootless daemon.
+- **Sandboxes.** Each command runs in its own container as `nobody`, with a read-only root, all capabilities
+  dropped, `no-new-privileges`, and pid, memory and cpu limits. The container is killed on timeout.
+- **Egress allowlist.** Sandboxes join an internal network whose only exit is squid. Squid allows only the
+  `allow_hosts` of enabled instances and blocks private and link-local ranges.
+- **Identity.** The web UI trusts `X-Forwarded-User`/`X-Forwarded-Groups` only from `DBOT_TRUSTED_PROXIES`
+  (oauth2-proxy). OIDC groups map to the `viewer`, `analyst` and `approver` roles. `/ingest/*` is authenticated by
+  HMAC instead.
+
+## Certified integrations
+
+The following integrations have contract tests against replayed vendor fixtures in CI (`tests/certified`), and
+ready-made instances in `deploy/dbot.yaml.example`:
+
+| Instance | Integration |
+|---|---|
+| abuseipdb | AbuseIPDB |
+| virustotal | VirusTotal (API v3) |
+| greynoise | GreyNoise |
+| urlscan | urlscan.io |
+| otx | AlienVault OTX v2 |
+
+Any other python3 integration in the catalog runs too (1,032 non-deprecated ones at the current content commit),
+but has not been certified. `dbot probe` reports which ones reach `main()` in their own image.
+
+## Limits
+
+- Only python3 integrations are supported. JavaScript, PowerShell and python2 integrations are not indexed.
+- There is no pull-mode `fetch-incidents`. Alerts arrive by webhook.
+- There is one worker and no chat UI. Analysts chat through MCP clients.
+
+## Development
+
+```bash
+uv sync
+uv run pytest                      # unit tests; docker-marked tests skip without a daemon
+uv run pytest -m docker            # only the tests that need a docker daemon
+uv run pytest -m llm               # real-LLM eval via opencode + MCP (needs OPENCODE_API_KEY)
+uv run ruff check . && uv run ruff format --check .
+uv run mypy dbot
+uv run dbot probe --limit 20       # run a nonexistent command in each integration's image
+```
+
+Docs: [architecture](docs/architecture.md), [configuration](docs/configuration.md),
+[deployment](docs/deployment.md), [operations](docs/operations.md).
 
 ## License
 
-MIT
+MIT. Integration source comes from [demisto/content](https://github.com/demisto/content) (MIT).
