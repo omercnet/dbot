@@ -57,22 +57,28 @@ def run_agent(tmp_path: Path, prompt: str) -> tuple[list[str], str]:
         timeout=300,
         check=False,
     )
-    if any(e in proc.stdout + proc.stderr for e in PROVIDER_ERRORS):
-        pytest.skip(f"LLM provider unavailable: {proc.stderr[-200:]}")
-
     calls: list[str] = []
     text = ""
+    errors = [proc.stderr]
     for line in proc.stdout.splitlines():
         try:
-            part = json.loads(line).get("part", {})
+            event = json.loads(line)
         except json.JSONDecodeError:
             continue
-        if part.get("type") == "tool":
-            # Direct MCP tool names ("dbot_search_tools") or code-mode calls ("tools.dbot.search_tools(").
-            blob = part.get("tool", "") + json.dumps(part.get("state", {}).get("input", {}))
-            calls += re.findall(r"dbot[._](search_tools|get_tool_schema|invoke_tool)", blob)
+        part = event.get("part", {})
+        if event.get("type") == "error":
+            errors.append(json.dumps(event))
+        elif part.get("type") == "tool" and part.get("state", {}).get("status") == "completed":
+            tool = part.get("tool", "")
+            if tool.startswith("dbot_"):  # direct MCP tool
+                calls.append(tool.removeprefix("dbot_"))
+            elif tool == "execute":  # opencode code mode wraps MCP calls in JS
+                calls += re.findall(r"tools\.dbot\.(\w+)\(", part["state"].get("input", {}).get("code", ""))
         elif part.get("type") == "text":
             text = part.get("text", "")
+    # Only opencode's own error events and stderr count, never model text or tool output.
+    if any(e in err for err in errors for e in PROVIDER_ERRORS):
+        pytest.skip(f"LLM provider unavailable: {errors[-1][-200:]}")
     assert proc.returncode == 0, proc.stderr[-2000:]
     return calls, text
 
