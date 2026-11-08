@@ -21,6 +21,23 @@ PROVIDER_UNAVAILABLE = ("FreeUsageLimit", "RateLimit", "rate_limit", "overloaded
 ATTEMPTS = 3  # free models are nondeterministic; pass if any attempt passes
 
 
+def provider_unavailable(stdout: str) -> str | None:
+    """Reason to skip, or None. Only opencode's structured provider errors meaning "unavailable" count, e.g.
+    {"type":"error","error":{"type":"provider.rate_limit","status":429}}. Auth errors, stderr and model text never do.
+    """
+    for line in stdout.splitlines():
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        error = event.get("error") if isinstance(event, dict) and event.get("type") == "error" else None
+        if not (isinstance(error, dict) and str(error.get("type", "")).startswith("provider.")):
+            continue
+        if error.get("status") in (429, 503, 529) or any(t in json.dumps(error) for t in PROVIDER_UNAVAILABLE):
+            return f"{error.get('type')} {error.get('status')}"
+    return None
+
+
 def run_agent(tmp_path: Path, prompt: str) -> tuple[list[str], str, list[str]]:
     """Run opencode against dbot's MCP server.
 
@@ -62,24 +79,21 @@ def run_agent(tmp_path: Path, prompt: str) -> tuple[list[str], str, list[str]]:
         check=False,
     )
     (tmp_path / "opencode.jsonl").write_text(proc.stdout + proc.stderr)
+    reason = provider_unavailable(proc.stdout)
+    if reason:
+        pytest.skip(f"LLM provider unavailable: {reason}")
     text = ""
     tools: list[str] = []
     for line in proc.stdout.splitlines():
         try:
-            event = json.loads(line)
+            part = json.loads(line).get("part", {})
         except json.JSONDecodeError:
             continue
-        error = event.get("error") if event.get("type") == "error" else None
-        # Skip only on opencode's structured provider errors that mean "unavailable", e.g.
-        # {"type":"error","error":{"type":"provider.rate_limit","status":429,...}}. Auth errors still fail.
-        if isinstance(error, dict) and str(error.get("type", "")).startswith("provider."):
-            if error.get("status") in (429, 503, 529) or any(t in json.dumps(error) for t in PROVIDER_UNAVAILABLE):
-                pytest.skip(f"LLM provider unavailable: {error.get('type')} {error.get('status')}")
-        elif event.get("part", {}).get("type") == "text":
-            text = event["part"].get("text", "")
-        elif event.get("part", {}).get("type") == "tool":
-            state = event["part"].get("state", {})
-            tools.append(f"{event['part'].get('tool')}:{state.get('status')}:{str(state.get('output'))[:120]}")
+        if part.get("type") == "text":
+            text = part.get("text", "")
+        elif part.get("type") == "tool":
+            state = part.get("state", {})
+            tools.append(f"{part.get('tool')}:{state.get('status')}:{str(state.get('output'))[:120]}")
     assert proc.returncode == 0, proc.stdout[-2000:] + proc.stderr[-2000:]
     log = tmp_path / "calls.log"
     return (log.read_text().split() if log.exists() else []), text, tools
