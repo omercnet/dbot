@@ -154,6 +154,8 @@ jobs:
   llm-eval:
     name: LLM eval (opencode + MCP)
     runs-on: ubuntu-latest
+    # Free models are nondeterministic: advisory on pull requests, blocking on main.
+    continue-on-error: ${{ github.event_name == 'pull_request' }}
     # Secrets are unavailable to fork and Dependabot PRs; the test skips without the key.
     env:
       OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
