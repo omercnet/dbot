@@ -41,6 +41,21 @@ instances:
       integrationReliability: C - Fairly reliable
     allow_hosts: [otx.alienvault.com]
 
+  - name: pulsedive
+    integration: Pulsedive
+    params:
+      apikey: env://PULSEDIVE_API_KEY
+    allow_hosts: [www.pulsedive.com]
+    policy: {read: [pulsedive-scan-result]}  # fetches a finished scan; no glob matches it, so it would be gated
+
+  - name: malwarebazaar
+    integration: MalwareBazaar
+    params:
+      url: https://mb-api.abuse.ch
+      credentials: {password: env://ABUSECH_AUTH_KEY}
+      integrationReliability: C - Fairly reliable
+    allow_hosts: [mb-api.abuse.ch]
+
 # policy: omitted, so the defaults apply (see docs/configuration.md). Anything no glob matches is destructive,
 # so TI submit/report/scan commands (abuseipdb-report-ip, urlscan-submit, file-scan, vt-comments-add) need approval.
 # Setting `read` or `destructive` here replaces that default list; copy the defaults when you extend them.

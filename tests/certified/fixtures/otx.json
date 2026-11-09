@@ -39,7 +39,7 @@
           "country_code3": "USA",
           "country_name": "United States of America",
           "dma_code": 0,
-          "False_positive": [],
+          "false_positive": [],
           "flag_title": "United States of America",
           "flag_url": "/assets/images/flags/us.png",
           "indicator": "8.8.88.8",
@@ -114,7 +114,7 @@
           "country_code3": "USA",
           "country_name": "United States of America",
           "dma_code": 0,
-          "False_positive": [],
+          "false_positive": [],
           "flag_title": "United States of America",
           "flag_url": "/assets/images/flags/us.png",
           "indicator": "98.136.103.23",
@@ -379,7 +379,7 @@
         "body": {
           "alexa": "http://www.alexa.com/siteinfo/otx.alienvault.com",
           "base_indicator": {},
-          "False_positive": [],
+          "false_positive": [],
           "indicator": "otx.alienvault.com",
           "pulse_info": {
             "count": 0,

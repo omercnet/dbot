@@ -12,20 +12,22 @@ class Spec:
     integration: str  # IntegrationDef.name
     yml: str  # relative to content/
     instance: str
-    key_param: str  # type-9 credentials param holding the api key in `password`
+    key_param: str  # param holding the api key: type-9 credentials (`password`) unless key_nested is False
     reads: dict[str, dict[str, Any]]  # curated read command -> args
     error_command: str  # run with BAD_KEY; the fixture answers 401
     error_args: dict[str, Any]
     error_message: str  # must appear in CommandResult.error
     destructive: list[str]  # submit/report commands the shipped policy must gate
     params: dict[str, Any] = field(default_factory=dict)
+    key_nested: bool = True  # False for a type-4 encrypted-string param that holds the key directly
 
     @property
     def key_env(self) -> str:
         return f"DBOT_REPLAY_{self.instance.upper()}_KEY"
 
     def instance_config(self, name: str, key_env: str) -> dict[str, Any]:
-        params = self.params | {self.key_param: {"password": f"env://{key_env}"}}
+        ref = f"env://{key_env}"
+        params = self.params | {self.key_param: {"password": ref} if self.key_nested else ref}
         return {"name": name, "integration": self.integration, "params": params}
 
 
@@ -98,5 +100,34 @@ SPECS = [
         error_message="The API key supplied is not valid.",
         # Its `url` command also submits a scan, but a name glob cannot tell it from the read `url` of VT/OTX.
         destructive=["urlscan-submit", "urlscan-submit-url-command"],
+    ),
+    Spec(
+        integration="Pulsedive",
+        yml="Packs/Pulsedive/Integrations/Pulsedive/Pulsedive.yml",
+        instance="pulsedive",
+        key_param="apikey",
+        key_nested=False,
+        reads={"ip": {"ip": "8.8.8.8"}},
+        # Reputation commands and test-module swallow HTTP errors (ip reports "not found", test-module returns a
+        # note), so the 401 only surfaces on submit, with a generic message. The test approves it like an operator.
+        error_command="pulsedive-scan",
+        error_args={"value": "example.com", "scan_type": "passiv"},
+        error_message="Problem submitting the data for scanning",
+        destructive=["pulsedive-scan"],
+    ),
+    Spec(
+        integration="MalwareBazaar",
+        yml="Packs/MalwareBazaar/Integrations/MalwareBazaar/MalwareBazaar.yml",
+        instance="malwarebazaar",
+        key_param="credentials",
+        params={"url": "https://mb-api.abuse.ch", "integrationReliability": "C - Fairly reliable"},
+        reads={
+            "file": {"file": "094fd325049b8a9cf6d3e5ef2a6d4cc6a567d7d49c35f8bb8dd9e3c6acf3d78d"},
+            "malwarebazaar-samples-list": {"sample_type": "tag", "sample_value": "TrickBot", "limit": "2"},
+        },
+        error_command="file",
+        error_args={"file": "094fd325049b8a9cf6d3e5ef2a6d4cc6a567d7d49c35f8bb8dd9e3c6acf3d78d"},
+        error_message="unknown_auth_key",  # BaseClient's 403 error carries the vendor body
+        destructive=["malwarebazaar-comment-add", "malwarebazaar-download-sample"],
     ),
 ]

@@ -3,3 +3,5 @@ www.virustotal.com
 api.greynoise.io
 urlscan.io
 otx.alienvault.com
+www.pulsedive.com
+mb-api.abuse.ch
