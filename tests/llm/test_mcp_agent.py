@@ -39,7 +39,7 @@ REPO = Path(__file__).resolve().parents[2]
 TAP = Path(__file__).with_name("mcp_tap.py")
 ATTEMPTS = 3  # small local models are nondeterministic; pass if any attempt passes
 RUN_TIMEOUT_S = 300
-REQUEST_LIMIT = 8  # model requests per MCP run
+REQUEST_LIMIT = 12  # model requests per MCP run; leaves room for invoke_tool validation retries (max_retries=3)
 RESPONDER_WALL_CLOCK_S = 480  # S4's config.agent.wall_clock_s; respond() adds 30s before cancelling the run
 IP = "71.6.135.131"  # in the greynoise certified fixtures and tests/llm/fixtures/abuseipdb-llm.json
 INSTRUCTIONS = (
