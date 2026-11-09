@@ -4,4 +4,5 @@ api.greynoise.io
 urlscan.io
 otx.alienvault.com
 www.pulsedive.com
+sandbox.pulsedive.com
 mb-api.abuse.ch

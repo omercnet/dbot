@@ -32,7 +32,7 @@ def match(
     """First route whose method, host and path are equal and whose query/headers/body constraints all hold.
 
     ``query`` and ``headers`` in a route are subsets that must be present with equal values (header names are
-    case-insensitive); ``body_contains`` is a substring of the request body.
+    case-insensitive); ``body_contains`` is a substring, or list of substrings, that must all be in the request body.
     """
     lower_headers = {k.lower(): v for k, v in headers.items()}
     for route in routes:
@@ -42,7 +42,8 @@ def match(
             continue
         if any(lower_headers.get(k.lower()) != v for k, v in route.get("headers", {}).items()):
             continue
-        if route.get("body_contains", "") not in body:
+        needles = route.get("body_contains", [])
+        if any(n not in body for n in ([needles] if isinstance(needles, str) else needles)):
             continue
         return route
     return None

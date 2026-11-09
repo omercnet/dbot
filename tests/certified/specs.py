@@ -20,6 +20,7 @@ class Spec:
     destructive: list[str]  # submit/report commands the shipped policy must gate
     params: dict[str, Any] = field(default_factory=dict)
     key_nested: bool = True  # False for a type-4 encrypted-string param that holds the key directly
+    test_module_risk: str = "read"  # "destructive" when the integration's test-module writes to the vendor
 
     @property
     def key_env(self) -> str:
@@ -129,5 +130,7 @@ SPECS = [
         error_args={"file": "094fd325049b8a9cf6d3e5ef2a6d4cc6a567d7d49c35f8bb8dd9e3c6acf3d78d"},
         error_message="unknown_auth_key",  # BaseClient's 403 error carries the vendor body
         destructive=["malwarebazaar-comment-add", "malwarebazaar-download-sample"],
+        # With an Auth-Key set, test-module posts a public comment on a sample, so the shipped policy gates it.
+        test_module_risk="destructive",
     ),
 ]
