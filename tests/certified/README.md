@@ -41,7 +41,8 @@ One file per instance, `fixtures/<instance>.json`. Routes are tried in order; th
       "path": "/api/v2/check",
       "query": {"ipAddress": "1.1.1.1"},
       "headers": {"Key": "dbot-replay-revoked-key"},
-      "body_contains": "optional substring of the request body, or a list of substrings that must all match",
+      "form": {"query": "optional multipart/urlencoded body fields that must equal these values"},
+      "body_contains": "optional substring of the request body",
       "response": {"status": 200, "headers": {}, "body": {"data": {}}}
     }
   ]
