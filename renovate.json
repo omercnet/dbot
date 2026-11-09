@@ -2,5 +2,19 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
     "local>omercnet/renovate-config"
+  ],
+  "git-submodules": {
+    "enabled": true
+  },
+  "packageRules": [
+    {
+      "description": "Keep the demisto/content submodule current. Submodule bumps are digest updates without release timestamps, so override the shared preset's digest disable and minimumReleaseAge, and batch the fast-moving upstream weekly.",
+      "matchManagers": ["git-submodules"],
+      "matchUpdateTypes": ["digest"],
+      "enabled": true,
+      "minimumReleaseAge": null,
+      "schedule": ["before 6am on monday"],
+      "commitMessageTopic": "content submodule"
+    }
   ]
 }
