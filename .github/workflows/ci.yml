@@ -5,6 +5,8 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  schedule:
+    - cron: "17 3 * * *"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -16,58 +18,31 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-        with:
-          submodules: true
 
-      - uses: actions/setup-python@v6
+      - uses: astral-sh/setup-uv@v10.3.3
         with:
           python-version: "3.13"
-
-      - uses: actions/setup-node@v6
-        with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: dbot/ui/package-lock.json
-
-      - name: Install Python deps
-        run: pip install hatch
-
-      - name: Install Node deps
-        run: npm ci
-        working-directory: dbot/ui
+          enable-cache: true
 
       - name: Ruff check
-        run: hatch run ruff check dbot/ tests/
+        run: uv run ruff check
 
       - name: Ruff format
-        run: hatch run ruff format --check dbot/ tests/
-
-      - name: Biome check
-        run: npm run lint
-        working-directory: dbot/ui
-
-      - name: TypeScript check
-        run: npx tsc -b --noEmit
-        working-directory: dbot/ui
+        run: uv run ruff format --check
 
   typecheck:
-    name: Mypy (non-blocking)
+    name: Mypy
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v6
-        with:
-          submodules: true
 
-      - uses: actions/setup-python@v6
+      - uses: astral-sh/setup-uv@v10.3.3
         with:
           python-version: "3.13"
-
-      - name: Install deps
-        run: pip install hatch
+          enable-cache: true
 
       - name: Mypy
-        run: hatch run typecheck
+        run: uv run mypy dbot/
 
   test:
     name: Test (Python ${{ matrix.python-version }})
@@ -81,72 +56,114 @@ jobs:
         with:
           submodules: true
 
-      - uses: actions/setup-python@v6
+      - uses: astral-sh/setup-uv@v10.3.3
         with:
           python-version: ${{ matrix.python-version }}
-          allow-prereleases: true
+          enable-cache: true
 
-      - uses: actions/setup-node@v6
+      - name: Content commit
+        id: content
+        run: echo "sha=$(git rev-parse HEAD:content)" >> "$GITHUB_OUTPUT"
+
+      # Catalog index and assembled scripts are keyed by content commit.
+      - uses: actions/cache@v6
         with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: dbot/ui/package-lock.json
+          path: ~/.cache/dbot
+          key: dbot-cache-${{ steps.content.outputs.sha }}-${{ hashFiles('dbot/catalog/**', 'dbot/sandbox/**') }}
+          restore-keys: dbot-cache-${{ steps.content.outputs.sha }}-
 
-      - name: Install Python deps
-        run: pip install hatch
+      # The ubuntu runner has a docker daemon, so `docker`-marked tests run here.
+      - name: Run tests
+        run: uv run pytest -v
 
-      - name: Install Node deps
-        run: npm ci
-        working-directory: dbot/ui
-
-      - name: Build UI
-        run: npm run build
-        working-directory: dbot/ui
-
-      - name: Run Python tests
-        run: hatch run pytest tests/ -v
-
-  test-ui:
-    name: Test UI (vitest)
+  llm-eval:
+    name: LLM eval (ollama + MCP)
     runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      OLLAMA_VERSION: "0.40.15"
+      OLLAMA_MODEL: granite4:3b
+      OLLAMA_BASE_URL: http://127.0.0.1:11434/v1
+      DBOT_EVAL_MODEL: ollama:granite4:3b
     steps:
       - uses: actions/checkout@v6
-
-      - uses: actions/setup-node@v6
         with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: dbot/ui/package-lock.json
+          submodules: true
 
-      - name: Install
-        run: npm ci
-        working-directory: dbot/ui
-
-      - name: Run frontend tests
-        run: npm run test
-        working-directory: dbot/ui
-
-  build:
-    name: Build UI
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-
-      - uses: actions/setup-node@v6
+      - uses: astral-sh/setup-uv@v10.3.3
         with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: dbot/ui/package-lock.json
+          python-version: "3.13"
+          enable-cache: true
 
-      - name: Install
-        run: npm ci
-        working-directory: dbot/ui
+      - name: Install dependencies
+        run: uv sync --dev
 
-      - name: Build
-        run: npm run build
-        working-directory: dbot/ui
-
-      - name: Verify dist
+      # CPU-only: the release tarball minus its CUDA and Vulkan backends, unpacked into the runner user's home.
+      - name: Install ollama
         run: |
-          test -f dbot/ui/dist/index.html
-          ls -la dbot/ui/dist/assets/
+          mkdir -p "$HOME/.local/ollama"
+          curl -fsSL "https://github.com/ollama/ollama/releases/download/v${OLLAMA_VERSION}/ollama-linux-amd64.tar.zst" \
+            | tar --zstd -x -C "$HOME/.local/ollama" --exclude='lib/ollama/cuda_*' --exclude='lib/ollama/vulkan'
+          echo "$HOME/.local/ollama/bin" >> "$GITHUB_PATH"
+
+      - uses: actions/cache@v6
+        with:
+          path: ~/.ollama/models
+          key: ollama-models-${{ env.OLLAMA_MODEL }}-${{ env.OLLAMA_VERSION }}
+
+      # Runs as the runner user, so models live in ~/.ollama. The OpenAI-compatible API ignores num_ctx.
+      - name: Start ollama
+        run: |
+          OLLAMA_CONTEXT_LENGTH=8192 nohup ollama serve > "$RUNNER_TEMP/ollama.log" 2>&1 &
+          for _ in $(seq 30); do
+            curl -fs http://127.0.0.1:11434/api/version && exit 0
+            sleep 1
+          done
+          cat "$RUNNER_TEMP/ollama.log"
+          exit 1
+
+      - name: Pull model
+        run: ollama pull "$OLLAMA_MODEL"
+
+      # pydantic-ai on ollama -> dbot MCP server / responder -> real Gateway -> DockerSandbox -> mitmdump replaying
+      # tests/certified fixtures. The runner's docker daemon and the dev group's mitmproxy are all it needs.
+      - name: Run LLM eval
+        run: uv run pytest -m llm tests/llm -v -rs --basetemp="$RUNNER_TEMP/llm-eval"
+
+      # Per-attempt model messages, tap logs (tools/call received), gateway audit JSONL and IR reports. No secrets:
+      # the audit is redacted and instances use the replay proxy's fake keys.
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: llm-eval
+          path: |
+            ${{ runner.temp }}/llm-eval/**/*.jsonl
+            ${{ runner.temp }}/llm-eval/**/report.json
+            ${{ runner.temp }}/llm-eval/**/mitmdump.log
+            ${{ runner.temp }}/ollama.log
+          if-no-files-found: ignore
+
+  probe:
+    name: Integration probe (nightly)
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: true
+
+      - uses: astral-sh/setup-uv@v10.3.3
+        with:
+          python-version: "3.13"
+          enable-cache: true
+
+      - name: Probe
+        run: uv run python -m dbot.sandbox.probe --json probe.json
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: probe
+          path: probe.json
+          if-no-files-found: warn

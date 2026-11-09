@@ -1,1 +1,1 @@
-"""dbot agent — IR investigation agent harness (chat + autonomous responder)."""
+"""dbot agent: alert responder, IR report model and queue worker."""

@@ -1,296 +1,110 @@
 # Architecture
 
-How dbot runs XSOAR integrations without XSOAR.
+## Problem
 
----
+XSOAR integrations expect to run inside XSOAR. They import `demistomock` and `CommonServerPython`, read
+credentials from `demisto.params()`, and report through `demisto.results()`. Running that third-party code
+inside a server process gives it the server's secrets, network and filesystem. dbot runs each command in its own
+container instead, and puts a gateway in front of it that decides who may run what.
 
-## The Core Problem
-
-Every XSOAR integration starts with:
-
-```python
-import demistomock as demisto
-from CommonServerPython import *
-```
-
-`demistomock` is the XSOAR runtime context. It provides `demisto.params()`
-(credentials), `demisto.args()` (inputs), `demisto.command()` (which command
-to run), and captures `demisto.results()` (output). Without a running XSOAR
-server, this module doesn't exist.
-
-dbot provides a fake one.
-
----
-
-## 5 Layers
+## Components
 
 ```
-                    MCP Client
-                        |
-                   dbot server (server.py)
-                   /          \
-             Registry        Executor
-          (indexer.py)    (executor.py)
-          (catalog.py)    (runner.py)
-               |              |
-          YAML parsing    demistomock shim
-                          CommonServerPython
-                               |
-                        demisto/content
-                        (git submodule)
+dbot/catalog/   index content/Packs -> IntegrationDef/CommandDef; keyword search; resolve "Integration.command"
+dbot/sandbox/   assemble.py (one script per integration), docker.py (DockerSandbox), probe.py
+dbot/sandbox/shim/  demistomock.py + runner.py: stdlib only, run INSIDE the container
+dbot/control/   config.py (dbot.yaml), secrets.py, policy.py, approvals.py (SQLite), audit.py (JSONL chain)
+dbot/gateway.py the only caller of Sandbox.run
+dbot/mcp.py     FastMCP stdio server over the gateway
+dbot/web/       Starlette: /ingest, /approvals, /alerts, /metrics, /healthz; server-rendered HTML
+dbot/agent/     responder.py (pydantic-ai), report.py (IRReport), worker.py (queue loop)
+dbot/cli.py     dbot serve | worker | mcp | invoke | audit verify | config check | egress write | probe
 ```
 
----
+## Request path
 
-## Layer 1: demistomock Shim
+1. A caller (MCP client, responder agent, or `dbot invoke`) calls
+   `Gateway.invoke(instance, command, args, reason, actor, approval_id=None)`.
+2. The gateway checks, in order:
+   - a non-empty reason, and args that are an object of at most 64 KB;
+   - that the instance exists and is enabled;
+   - that the command exists for the instance's integration (the catalog);
+   - the risk (`policy.risk`): `read` overrides win, then `destructive` globs, then the integration's
+     `dangerous: true` flag, else `read`;
+   - the role: `viewer` alone may invoke nothing. A `read` command needs `analyst`, `approver` or `agent`.
+     Anyone with a non-viewer role may request a destructive command;
+   - for a destructive command, the approval. Without `approval_id`, the gateway creates an approval and returns
+     `approval_required`. With one, `Approvals.consume()` must succeed: approved, unexpired, unused, and matching
+     `sha256(canonical_json(instance, command, args))`.
+3. It resolves the instance's `env://` and `file://` params. When `DBOT_EGRESS_PROXY` is set, it also forces
+   `params.proxy = true`, so `CommonServerPython` keeps the proxy env.
+4. `DockerSandbox.run` assembles the script, pulls the integration's `dockerimage` if it is missing, and starts
+   `docker run --rm -i --read-only --user 65534:65534 --cap-drop ALL --security-opt no-new-privileges --pids-limit
+   256 --memory 512m --cpus 1` with the script directory mounted read-only at `/dbot`. Params travel only on stdin,
+   never in argv or the environment.
+5. The results are redacted (every known secret value is masked). Every outcome is audited, including denials and
+   crashes.
 
-**File**: `dbot/runtime/demistomock.py`
+## Script assembly
 
-The fake XSOAR runtime. Implements ~50 methods that every integration calls.
+XSOAR runs an integration in a single namespace. `assemble()` writes one file per (content commit, integration)
+under `DBOT_CACHE_DIR`. The file contains:
 
-### Key Design Decisions
+1. the typing names XSOAR provides;
+2. `CommonServerPython`;
+3. a `CommonServerUserPython` stub;
+4. each `*ApiModule`, inlined transitively in place of its `from X import *` line;
+5. the integration source.
 
-**Thread-safe via `contextvars.ContextVar`**: Each concurrent invocation gets
-its own isolated `DemistoMock` instance. No global state, no mutex.
+## Wire protocol (inside the container)
 
-```python
-_current_mock: contextvars.ContextVar[DemistoMock] = contextvars.ContextVar(
-    "demisto_mock", default=_bootstrap_mock
-)
-```
-
-**Module-level `__getattr__` proxy**: The module itself acts as the `demisto`
-object. When an integration does `demistomock.params()`, Python calls
-`demistomock.__getattr__("params")`, which returns
-`_get_mock().params()`.
-
-```python
-def __getattr__(name: str) -> Any:
-    return getattr(_get_mock(), name)
-```
-
-**Results are captured, not logged**: The real demistomock just logs results.
-Our mock captures them in a list for retrieval after execution.
-
-**Default bootstrap mock**: A mock with empty params/args is the default value
-of the ContextVar. This exists because `CommonServerPython` calls
-`demisto.params()` at import time (module-level code), before any real
-invocation has set a mock.
-
-### Method Categories
-
-| Category | Methods | Behavior |
-|----------|---------|----------|
-| Critical | `command()`, `args()`, `params()`, `results()` | Returns injected values / captures output |
-| Logging | `info()`, `debug()`, `error()`, `log()` | Writes to dbot logger + captures in mock |
-| State | `getIntegrationContext()`, `setIntegrationContext()`, `getLastRun()`, `setLastRun()` | In-memory per-invocation (not persisted) |
-| Stubbed | `incidents()`, `executeCommand()`, `getFilePath()`, etc. | No-ops or sensible defaults |
-| Helpers | `get()`, `gets()`, `getParam()`, `getArg()` | Dict access utilities |
-
----
-
-## Layer 2: CommonServerPython Loader
-
-**File**: `dbot/runtime/common_server.py`
-
-`CommonServerPython.py` is the XSOAR standard library (~10,000 lines). It
-lives at `Packs/Base/Scripts/CommonServerPython/CommonServerPython.py` in the
-content repo. It's pure Python -- it just imports `demistomock as demisto`.
-
-The loader:
-
-1. Injects dbot's `demistomock` module into `sys.modules["demistomock"]`
-2. Creates an empty `CommonServerUserPython` stub module
-3. Loads the real `CommonServerPython` via `importlib`
-4. All subsequent integration imports resolve correctly
-
-```python
-bootstrap_common_modules(content_root)
-# Now any integration can do:
-#   from CommonServerPython import BaseClient, CommandResults, return_results
-```
-
-The loader is **idempotent** -- calling it multiple times is safe.
-
-### Key Exports from CommonServerPython
-
-| Export | Purpose |
-|--------|---------|
-| `BaseClient` | HTTP client base class with retry, proxy, auth |
-| `CommandResults` | Structured command output (readable + context data) |
-| `return_results()` | Writes results back through demisto.results() |
-| `return_error()` | Error response helper |
-| `EntryType` | Output type enum (NOTE, ERROR, FILE, etc.) |
-| `EntryFormat` | Output format enum (JSON, TABLE, MARKDOWN, etc.) |
-| `DBotScoreType` | Indicator type enum (IP, FILE, URL, DOMAIN, etc.) |
-
----
-
-## Layer 3: Registry (Indexer + Catalog)
-
-**Files**: `dbot/registry/indexer.py`, `dbot/registry/catalog.py`,
-`dbot/registry/models.py`
-
-### Indexer
-
-Walks `content/Packs/*/Integrations/*/*.yml` at startup. For each YAML:
-
-- Extracts integration name, description, category
-- Parses every command: name, description, arguments, outputs
-- Identifies credential params (`type: 9` in YAML)
-- Flags dangerous commands (`execution: true` in YAML)
-- Resolves the path to the `.py` file
-
-### Catalog
-
-Holds the parsed integrations in memory. Provides:
-
-- **`search(query, category?, top_k=10)`**: Keyword search across command
-  names, descriptions, pack names, and categories. Returns ranked results.
-- **`get_schema(tool_name)`**: Full argument and output spec for a command.
-  Secret/credential args are stripped -- the agent never sees them.
-- **`resolve(tool_name)`**: Returns `(IntegrationDef, CommandDef)` for
-  execution.
-
-Tool names follow the format `Pack.command-name`
-(e.g., `VirusTotal.vt-get-file`).
-
-### Data Model
-
-```
-IntegrationDef
-├── pack: str
-├── name: str
-├── category: str
-├── py_path: str
-├── commands: list[CommandDef]
-│   ├── name: str
-│   ├── description: str
-│   ├── dangerous: bool
-│   ├── args: list[ArgDef]
-│   │   ├── name, required, secret, is_array, options
-│   └── outputs: list[OutputDef]
-│       ├── context_path, description, type
-├── params: list[ParamDef]
-│   ├── name, type, is_credential, hidden
-└── credential_params: list[str]
-```
-
----
-
-## Layer 4: Executor
-
-**Files**: `dbot/runtime/executor.py`, `dbot/runtime/runner.py`
-
-### In-Process Mode (Development)
-
-```python
-result = await execute_inprocess(integration_py, command, args, params)
-```
-
-1. Creates a fresh `DemistoMock` with the given command/args/params
-2. Sets it as the current context via `contextvars`
-3. Imports the integration module via `importlib` (in a thread pool)
-4. Calls `module.main()`
-5. Captures `mock.get_results()` and `mock.get_logs()`
-6. Returns structured result dict
-
-Fast, but risks import side effects between calls.
-
-### Subprocess Mode (Production)
-
-```python
-result = await execute_subprocess(integration_py, command, args, params)
-```
-
-1. Serializes `{command, args, params}` as JSON
-2. Spawns `python -m dbot.runtime.runner <integration.py>`
-3. Sends JSON via stdin
-4. `runner.py` bootstraps demistomock + CSP, imports the integration, calls
-   `main()`, captures results, writes JSON to stdout
-5. Parent reads stdout, parses JSON
-6. Process exits -- no import pollution
-
-Full process isolation. Each tool call is a fresh process.
-
-### What Happens When `invoke_tool` is Called
-
-```
-Agent calls invoke_tool("VirusTotal.vt-get-file", {"file": "abc123"}, "checking hash")
-    |
-    v
-catalog.resolve("VirusTotal.vt-get-file")
-    -> (IntegrationDef, CommandDef)
-    |
-    v
-command.dangerous?
-    -> Yes: return {status: "approval_required", ...}
-    -> No: continue
-    |
-    v
-credential_store.get("VirusTotal")
-    -> {"apikey": "actual-key-from-env"}
-    |
-    v
-executor_fn(integration.py_path, "vt-get-file", {"file": "abc123"}, {"apikey": "..."})
-    |
-    v
-[subprocess spawns, integration makes HTTP call to VT API]
-    |
-    v
-{success: true, results: [...], logs: [...]}
-    |
-    v
-Return to agent (credentials stripped, reason logged to audit)
-```
-
----
-
-## Layer 5: Credential Store
-
-**File**: `dbot/credentials/store.py`
-
-Maps pack names to their required credentials. Resolved from
-`config/credentials.yaml` at startup.
-
-```yaml
-VirusTotal:
-  apikey: ${VT_API_KEY}
-```
-
-`${VT_API_KEY}` is resolved from the environment variable at load time.
-
-### Security Model
-
-- Credentials are **never exposed to the agent**
-- Secret args (`type: 9` in YAML) are stripped from tool schemas
-- The agent only passes non-secret inputs (hashes, IPs, domains)
-- Credentials are injected server-side before execution
-- The audit log records args but never credentials
-
----
-
-## Audit Trail
-
-**File**: `dbot/audit.py`
-
-Every `invoke_tool` call is logged as a JSON-lines entry:
+`/dbot/runner.py` reads one JSON object, `{"command", "args", "params"}`, from stdin. It installs the shim
+`demistomock`, runs the integration's `main()`, and writes exactly one JSON line to stdout:
 
 ```json
-{
-  "timestamp": "2025-03-21T17:45:00+0000",
-  "tool_name": "VirusTotal.vt-get-file",
-  "args": {"file": "abc123"},
-  "reason": "Checking hash from alert #1234",
-  "dangerous": false,
-  "approved_by": null,
-  "result_success": true,
-  "duration_ms": 1234.56
-}
+{"results": [...], "logs": [...], "exit": "ok|sysexit|exception|import", "error": null}
 ```
 
-This provides a complete audit trail for post-incident review.
+The host maps that line to a `CommandResult`:
 
----
+| Condition | status | error_kind |
+|---|---|---|
+| any entry with `Type == 4` | error | integration |
+| `sys.exit()` with no results, or with a nonzero/error exit | error | runtime |
+| `sys.exit()` after results were returned | ok (the results count) | |
+| import failure | error | import |
+| uncaught exception | error | runtime |
+| deadline (default 60s), container killed with `docker kill` | error | timeout |
+| OOM or signal (exit > 128) | error | killed |
+| docker or infrastructure failure | error | sandbox |
+| `test-module` without an `"ok"` result | error | integration |
 
-Next: [Credential Setup](credentials.md) | [Integration Guide](integrations.md)
+## Alert flow
+
+1. `POST /ingest/{source}` checks `X-Dbot-Signature: sha256=<hex>` (HMAC-SHA256 over the raw body). It validates the
+   alert schema, dedupes on `(source, alert.id)`, and enqueues the alert in `DBOT_DATA_DIR/dbot.db`.
+2. `dbot worker` claims the next queued alert and runs the responder. The responder is a pydantic-ai agent whose
+   tools are `search_tools`, `get_tool_schema` and `invoke`. Each `invoke` call goes to the gateway as
+   `Actor(id="agent:responder", kind="agent", roles={"analyst"}, on_behalf_of="alert:<id>")`. It is limited by
+   `agent.max_tool_calls` and `agent.wall_clock_s`.
+3. The worker stores the resulting `IRReport` (verdict, confidence, summary, evidence, actions taken, actions
+   pending, errors). The model writes only the verdict, confidence and summary. dbot fills in the rest from what the
+   gateway returned during the run: one evidence entry per executed or denied `invoke` (instance, command, masked
+   args, status, and an excerpt of the result or error), plus the actions taken and pending. If the model fails or
+   runs out of budget, the report is `inconclusive` with the evidence collected so far. The alert becomes `done`,
+   or `waiting_approval` if any action is pending, or `failed`.
+4. When an approver decides one of the alert's approvals on `/approvals`, the web app requeues the alert. On the
+   next run, the responder executes the approved action exactly once and updates the report.
+
+## State
+
+Everything lives under `DBOT_DATA_DIR` (default `/var/lib/dbot`):
+
+| Path | Contents |
+|---|---|
+| `dbot.db` | SQLite: `approvals` and `alerts` tables |
+| `audit/audit-YYYY-MM-DD.jsonl` | the hash-chained audit log (UTC days; the chain continues across files) |
+| `cache/` | the catalog index cache, keyed by content commit |
+
+Assembled scripts go to `DBOT_CACHE_DIR` (default `~/.cache/dbot/assembled`). When `DBOT_DATA_DIR` is unset, the
+catalog cache goes to `<repo>/config/`, which is gitignored.

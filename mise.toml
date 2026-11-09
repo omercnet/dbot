@@ -1,9 +1,6 @@
 [tools]
+python = "3.13"
 uv = "latest"
-hatch = "latest"
 ruff = "latest"
 github-cli = "latest"
 node = "22"
-
-[env]
-MISE_DISABLE_TOOLS = "python"  # use system python

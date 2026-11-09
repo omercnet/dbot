@@ -1,0 +1,477 @@
+{
+  "integration": "AlienVault OTX v2",
+  "routes": [
+    {
+      "name": "revoked key",
+      "source": "hand-written; OTX answers a bad X-OTX-API-KEY with a JSON detail message",
+      "method": "GET",
+      "host": "otx.alienvault.com",
+      "path": "/api/v1/indicators/IPv4/8.8.8.8/general",
+      "headers": {
+        "X-OTX-API-KEY": "dbot-replay-revoked-key"
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "detail": "Authentication credentials were not provided or are invalid."
+        }
+      }
+    },
+    {
+      "name": "test-module",
+      "source": "content/Packs/AlienVault_OTX/Integrations/AlienVault_OTX_v2/AlienVault_OTX_v2_test.py::IP_RAW_RESPONSE",
+      "method": "GET",
+      "host": "otx.alienvault.com",
+      "path": "/api/v1/indicators/IPv4/8.8.8.8/general",
+      "response": {
+        "status": 200,
+        "body": {
+          "accuracy_radius": 1000,
+          "area_code": 0,
+          "asn": "AS3356 LEVEL3",
+          "base_indicator": {},
+          "charset": 0,
+          "city": null,
+          "city_data": true,
+          "continent_code": "NA",
+          "country_code": "US",
+          "country_code2": "US",
+          "country_code3": "USA",
+          "country_name": "United States of America",
+          "dma_code": 0,
+          "False_positive": [],
+          "flag_title": "United States of America",
+          "flag_url": "/assets/images/flags/us.png",
+          "indicator": "8.8.88.8",
+          "latitude": 37.751,
+          "longitude": -97.822,
+          "postal_code": null,
+          "pulse_info": {
+            "count": 0,
+            "pulses": [],
+            "references": [],
+            "related": {
+              "alienvault": {
+                "adversary": [],
+                "industries": [],
+                "malware_families": []
+              },
+              "other": {
+                "adversary": [],
+                "industries": [],
+                "malware_families": []
+              }
+            }
+          },
+          "region": null,
+          "reputation": 0,
+          "sections": [
+            "general",
+            "geo",
+            "reputation",
+            "url_list",
+            "passive_dns",
+            "malware",
+            "nids_list",
+            "http_scans"
+          ],
+          "subdivision": null,
+          "type": "IPv4",
+          "type_title": "IPv4",
+          "validation": [],
+          "whois": "http://whois.domaintools.com/8.8.88.8"
+        }
+      }
+    },
+    {
+      "name": "ip general",
+      "source": "content/Packs/AlienVault_OTX/Integrations/AlienVault_OTX_v2/AlienVault_OTX_v2_test.py::IP_RAW_RESPONSE_WITH_RELATIONSHIPS",
+      "method": "GET",
+      "host": "otx.alienvault.com",
+      "path": "/api/v1/indicators/IPv4/98.136.103.23/general",
+      "response": {
+        "status": 200,
+        "body": {
+          "accuracy_radius": 1000,
+          "area_code": 0,
+          "asn": "AS36647 YAHOO-GQ1",
+          "base_indicator": {
+            "access_reason": "",
+            "access_type": "public",
+            "content": "",
+            "description": "",
+            "id": 2212739426,
+            "indicator": "98.136.103.23",
+            "title": "",
+            "type": "IPv4"
+          },
+          "charset": 0,
+          "city": null,
+          "city_data": true,
+          "continent_code": "NA",
+          "country_code": "US",
+          "country_code2": "US",
+          "country_code3": "USA",
+          "country_name": "United States of America",
+          "dma_code": 0,
+          "False_positive": [],
+          "flag_title": "United States of America",
+          "flag_url": "/assets/images/flags/us.png",
+          "indicator": "98.136.103.23",
+          "latitude": 37.751,
+          "longitude": -97.822,
+          "postal_code": null,
+          "pulse_info": {
+            "count": 1,
+            "pulses": [
+              {
+                "TLP": "green",
+                "adversary": "",
+                "attack_ids": [
+                  {
+                    "display_name": "T1140 - Deobfuscate/Decode Files or Information",
+                    "id": "T1140",
+                    "name": "Deobfuscate/Decode Files or Information"
+                  },
+                  {
+                    "display_name": "T1040 - Network Sniffing",
+                    "id": "T1040",
+                    "name": "Network Sniffing"
+                  },
+                  {
+                    "display_name": "T1053 - Scheduled Task/Job",
+                    "id": "T1053",
+                    "name": "Scheduled Task/Job"
+                  },
+                  {
+                    "display_name": "T1060 - Registry Run Keys / Startup Folder",
+                    "id": "T1060",
+                    "name": "Registry Run Keys / Startup Folder"
+                  },
+                  {
+                    "display_name": "T1071 - Application Layer Protocol",
+                    "id": "T1071",
+                    "name": "Application Layer Protocol"
+                  }
+                ],
+                "author": {
+                  "avatar_url": "https://otx20-web-media.s3.amazonaws.com/media/avatars/user_80137/resized/80/avatar_54d0ee2979.png",
+                  "id": "80137",
+                  "is_following": false,
+                  "is_subscribed": false,
+                  "username": "dorkingbeauty1"
+                },
+                "cloned_from": null,
+                "comment_count": 0,
+                "created": "2020-12-11T23:37:51.039000",
+                "description": "Technique ID: T1140 ATTACKID",
+                "downvotes_count": 0,
+                "export_count": 7,
+                "follower_count": 0,
+                "groups": [],
+                "id": "5fd402cf91a35497c2af3da8",
+                "in_group": false,
+                "indicator_count": 4323,
+                "indicator_type_counts": {
+                  "FileHash-MD5": 21,
+                  "FileHash-SHA1": 21,
+                  "FileHash-SHA256": 253,
+                  "URL": 3007,
+                  "domain": 309,
+                  "hostname": 712
+                },
+                "industries": [],
+                "is_author": false,
+                "is_modified": true,
+                "is_subscribing": null,
+                "locked": false,
+                "malware_families": [],
+                "modified": "2021-01-10T00:02:05.455000",
+                "modified_text": "84 days ago ",
+                "name": "4275147930ee7f90e65251218ef84542577ff2a79699dd6634108721ee81be1d",
+                "public": 1,
+                "pulse_source": "web",
+                "references": [
+                  "The following is the full set of results for the 2016 Windows World Cup"
+                ],
+                "related_indicator_is_active": 0,
+                "related_indicator_type": "IPv4",
+                "subscriber_count": 137,
+                "tags": [
+                  "pushdo",
+                  "activity beacon",
+                  "united",
+                  "malware beacon",
+                  "unknown",
+                  "msie",
+                  "windows nt",
+                  "show",
+                  "search",
+                  "entries",
+                  "malware",
+                  "copy",
+                  "date",
+                  "write",
+                  "whitelisted",
+                  "as15169 google",
+                  "united kingdom",
+                  "gmbh",
+                  "default"
+                ],
+                "targeted_countries": [
+                  "Finland",
+                  "Germany",
+                  "France",
+                  "Ireland",
+                  "United Kingdom of Great Britain and Northern Ireland",
+                  "United States of America"
+                ],
+                "threat_hunter_has_agents": 1,
+                "threat_hunter_scannable": true,
+                "upvotes_count": 0,
+                "validator_count": 0,
+                "vote": 0,
+                "votes_count": 0
+              }
+            ],
+            "references": [
+              "The following is the full set of results for the 2016 Windows World Cup"
+            ],
+            "related": {
+              "alienvault": {
+                "adversary": [],
+                "industries": [],
+                "malware_families": []
+              },
+              "other": {
+                "adversary": [],
+                "industries": [],
+                "malware_families": []
+              }
+            }
+          },
+          "region": null,
+          "reputation": 0,
+          "sections": [
+            "general",
+            "geo",
+            "reputation",
+            "url_list",
+            "passive_dns",
+            "malware",
+            "nids_list",
+            "http_scans"
+          ],
+          "subdivision": null,
+          "type": "IPv4",
+          "type_title": "IPv4",
+          "validation": [
+            {
+              "message": "contained in whitelisted prefix",
+              "name": "Whitelisted IP",
+              "source": "whitelist"
+            }
+          ],
+          "whois": "http://whois.domaintools.com/98.136.103.23"
+        }
+      }
+    },
+    {
+      "name": "ip url_list",
+      "source": "content/Packs/AlienVault_OTX/Integrations/AlienVault_OTX_v2/AlienVault_OTX_v2_test.py::IP_URL_RAW_RESPONSE_WITH_RELATIONSHIPS",
+      "method": "GET",
+      "host": "otx.alienvault.com",
+      "path": "/api/v1/indicators/IPv4/98.136.103.23/url_list",
+      "response": {
+        "status": 200,
+        "body": {
+          "url_list": [
+            {
+              "url": "mojorojorestaurante.com",
+              "date": "2022-01-03T08:21:31",
+              "domain": "mojorojorestaurante.com",
+              "hostname": "mojorojorestaurante.com",
+              "result": {
+                "urlworker": {
+                  "ip": "8.8.8.8",
+                  "http_code": 200
+                },
+                "safebrowsing": {
+                  "matches": []
+                }
+              },
+              "httpcode": 200,
+              "gsb": [],
+              "encoded": "https%3A//mojorojorestaurante.com"
+            }
+          ],
+          "page_num": 1,
+          "limit": 10,
+          "paged": true,
+          "has_next": true,
+          "full_size": 7855,
+          "actual_size": 7855
+        }
+      }
+    },
+    {
+      "name": "ip malware",
+      "source": "content/Packs/AlienVault_OTX/Integrations/AlienVault_OTX_v2/AlienVault_OTX_v2_test.py::IP_FILE_ANALYSIS_RAW_RESPONSE_WITH_RELATIONSHIPS",
+      "method": "GET",
+      "host": "otx.alienvault.com",
+      "path": "/api/v1/indicators/IPv4/98.136.103.23/malware",
+      "response": {
+        "status": 200,
+        "body": {
+          "data": [
+            {
+              "datetime_int": 1508608939,
+              "hash": "0b4d4a7c35a185680bc5102bdd98218297e2cdf0a552bde10e377345f3622c1c",
+              "detections": {
+                "avast": "Win32:Sinowal-GB\\ [Trj]",
+                "avg": null,
+                "clamav": "Win.Downloader.50691-1",
+                "msdefender": "Worm:Win32/VB"
+              },
+              "date": "2017-10-21T18:02:19"
+            }
+          ],
+          "size": 2189582,
+          "count": 2189582
+        }
+      }
+    },
+    {
+      "name": "ip passive_dns",
+      "source": "content/Packs/AlienVault_OTX/Integrations/AlienVault_OTX_v2/AlienVault_OTX_v2_test.py::IP_DNS_RAW_RESPONSE_WITH_RELATIONSHIPS",
+      "method": "GET",
+      "host": "otx.alienvault.com",
+      "path": "/api/v1/indicators/IPv4/98.136.103.23/passive_dns",
+      "response": {
+        "status": 200,
+        "body": {
+          "passive_dns": [
+            {
+              "address": "8.8.8.8",
+              "first": "2022-01-04T08:25:39",
+              "last": "2022-01-04T08:25:39",
+              "hostname": "nguyenhoangai-4g.xyz",
+              "record_type": "A",
+              "indicator_link": "/indicator/domain/nguyenhoangai-4g.xyz",
+              "flag_url": "assets/images/flags/us.png",
+              "flag_title": "United States",
+              "asset_type": "domain",
+              "asn": "AS15169 GOOGLE"
+            }
+          ],
+          "count": 1
+        }
+      }
+    },
+    {
+      "name": "domain general",
+      "source": "content/Packs/AlienVault_OTX/Integrations/AlienVault_OTX_v2/AlienVault_OTX_v2_test.py::DOMAIN_RAW_RESPONSE",
+      "method": "GET",
+      "host": "otx.alienvault.com",
+      "path": "/api/v1/indicators/domain/otx.alienvault.com/general",
+      "response": {
+        "status": 200,
+        "body": {
+          "alexa": "http://www.alexa.com/siteinfo/otx.alienvault.com",
+          "base_indicator": {},
+          "False_positive": [],
+          "indicator": "otx.alienvault.com",
+          "pulse_info": {
+            "count": 0,
+            "pulses": [],
+            "references": [],
+            "related": {
+              "alienvault": {
+                "adversary": [],
+                "industries": [],
+                "malware_families": []
+              },
+              "other": {
+                "adversary": [],
+                "industries": [],
+                "malware_families": []
+              }
+            }
+          },
+          "sections": [
+            "general",
+            "geo",
+            "url_list",
+            "passive_dns",
+            "malware",
+            "whois",
+            "http_scans"
+          ],
+          "type": "domain",
+          "type_title": "Domain",
+          "validation": [
+            {
+              "message": "Whitelisted domain alienvault.com",
+              "name": "Whitelisted domain",
+              "source": "majestic"
+            },
+            {
+              "message": "Whitelisted domain alienvault.com",
+              "name": "Whitelisted domain",
+              "source": "whitelist"
+            }
+          ],
+          "whois": "http://whois.domaintools.com/otx.alienvault.com"
+        }
+      }
+    },
+    {
+      "name": "domain url_list",
+      "source": "content/Packs/AlienVault_OTX/Integrations/AlienVault_OTX_v2/AlienVault_OTX_v2_test.py::DOMAIN_URL_RAW_RESPONSE",
+      "method": "GET",
+      "host": "otx.alienvault.com",
+      "path": "/api/v1/indicators/domain/otx.alienvault.com/url_list",
+      "response": {
+        "status": 200,
+        "body": {
+          "url_list": [],
+          "page_num": 1,
+          "limit": 10,
+          "paged": true,
+          "has_next": true,
+          "full_size": 5494039,
+          "actual_size": 5494039
+        }
+      }
+    },
+    {
+      "name": "domain malware",
+      "source": "content/Packs/AlienVault_OTX/Integrations/AlienVault_OTX_v2/AlienVault_OTX_v2_test.py::DOMAIN_HASH_RAW_RESPONSE",
+      "method": "GET",
+      "host": "otx.alienvault.com",
+      "path": "/api/v1/indicators/domain/otx.alienvault.com/malware",
+      "response": {
+        "status": 200,
+        "body": {
+          "data": [],
+          "size": 865426,
+          "count": 865426
+        }
+      }
+    },
+    {
+      "name": "domain passive_dns",
+      "source": "content/Packs/AlienVault_OTX/Integrations/AlienVault_OTX_v2/AlienVault_OTX_v2_test.py::DOMAIN_DNS_RAW_RESPONSE",
+      "method": "GET",
+      "host": "otx.alienvault.com",
+      "path": "/api/v1/indicators/domain/otx.alienvault.com/passive_dns",
+      "response": {
+        "status": 200,
+        "body": {
+          "passive_dns": [],
+          "count": 0
+        }
+      }
+    }
+  ]
+}

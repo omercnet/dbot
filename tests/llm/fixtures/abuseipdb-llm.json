@@ -1,0 +1,37 @@
+{
+  "integration": "AbuseIPDB",
+  "routes": [
+    {
+      "name": "ip check for the GreyNoise fixture IP, so one IP is covered by both instances",
+      "source": "hand-written: tests/certified/fixtures/abuseipdb.json 'ip check' with ipAddress changed and a few reports",
+      "method": "GET",
+      "host": "api.abuseipdb.com",
+      "path": "/api/v2/check",
+      "query": {"ipAddress": "71.6.135.131"},
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "ipAddress": "71.6.135.131",
+            "abuseConfidencePercentage": 37,
+            "abuseConfidenceScore": 37,
+            "countryCode": "US",
+            "countryName": "United States",
+            "usageType": "Data Center/Web Hosting/Transit",
+            "isp": "CariNet, Inc.",
+            "domain": "fiberalley.com",
+            "totalReports": 12,
+            "numDistinctUsers": 5,
+            "lastReportedAt": "2025-06-26T12:59:00+00:00",
+            "reports": [],
+            "hostnames": ["soda.census.shodan.io"],
+            "ipVersion": 4,
+            "isPublic": true,
+            "isTor": false,
+            "isWhitelisted": false
+          }
+        }
+      }
+    }
+  ]
+}

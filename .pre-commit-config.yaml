@@ -18,18 +18,8 @@ repos:
 
   # ── Python: ruff ────────────────────────────────────────────────────
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.15.7
+    rev: v0.17.4
     hooks:
       - id: ruff
         args: [--fix, --exit-non-zero-on-fix]
       - id: ruff-format
-
-  # ── JS/TS: biome (local — uses project's pinned version) ───────────
-  - repo: local
-    hooks:
-      - id: biome-check
-        name: biome check
-        entry: npx --prefix dbot/ui biome check --write --no-errors-on-unmatched --config-path biome.json
-        language: system
-        files: ^dbot/ui/(src/.*\.(ts|tsx|js|jsx)|vite\.config\.ts)$
-        pass_filenames: true
