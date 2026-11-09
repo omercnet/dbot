@@ -97,8 +97,9 @@ def run_agent(stack: Stack, workdir: Path, prompt: str, model: str) -> AgentRun:
     )
     agent = Agent(
         infer_model(model),
-        # The server indexes the catalog on start; allow for slow CI runners.
-        toolsets=[MCPToolset(transport, init_timeout=60)],
+        # The server indexes the catalog on start; allow for slow CI runners. granite4:3b sometimes nests `reason`
+        # inside `args`; real MCP clients retry on the validation error, so allow it a couple of corrections.
+        toolsets=[MCPToolset(transport, init_timeout=60, max_retries=3)],
         instructions=INSTRUCTIONS,
         model_settings=ModelSettings(temperature=0.0),
     )
