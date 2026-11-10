@@ -85,8 +85,9 @@ def build_mcp(gateway: Gateway) -> FastMCP:
     async def invoke_tool(
         instance: str, command: str, args: dict[str, Any], reason: str, approval_id: str | None = None
     ) -> dict[str, Any]:
-        """Run a command on an instance. `args` holds only the command's own arguments. `reason` is required and
-        audited; pass it as its own top-level parameter, never as a key inside `args`."""
+        """Run a command on an instance. `reason` is the audit justification: always required, always a top-level
+        parameter. `args` holds the command's own arguments only; include a `reason` key there only when the
+        command itself takes a `reason` argument, and still pass the top-level `reason`."""
         result = await gateway.invoke(instance, command, args, reason, actor, approval_id)
         if isinstance(result, Pending | Denied):
             return result.model_dump()
