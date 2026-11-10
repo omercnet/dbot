@@ -3,8 +3,9 @@
 from typing import Any
 
 import pytest
+from mitmproxy.test import tflow
 
-from tests.certified.replay_addon import match
+from tests.certified.replay_addon import UNMATCHED_STATUS, Replay, match
 
 HASH = "094fd325049b8a9cf6d3e5ef2a6d4cc6a567d7d49c35f8bb8dd9e3c6acf3d78d"
 COMMENT_FORM = {"query": "add_comment", "sha256_hash": HASH, "comment": "test comment"}
@@ -44,3 +45,35 @@ def test_query_and_headers_must_match() -> None:
     assert get({"ip": "1.1.1.1"}, {"key": "k"}) is ROUTES[1]  # header names are case-insensitive
     assert get({"ip": "1.1.1.2"}, {"Key": "k"}) is None
     assert get({"ip": "1.1.1.1"}, {"Key": "other"}) is None
+
+
+def multipart(fields: dict[str, str]) -> tuple[str, bytes]:
+    parts = b"".join(
+        b'--b\r\nContent-Disposition: form-data; name="%s"\r\n\r\n%s\r\n' % (k.encode(), v.encode())
+        for k, v in fields.items()
+    )
+    return "multipart/form-data; boundary=b", parts + b"--b--\r\n"
+
+
+def urlencoded(fields: dict[str, str]) -> tuple[str, bytes]:
+    return "application/x-www-form-urlencoded", "&".join(
+        f"{k}={v.replace(' ', '+')}" for k, v in fields.items()
+    ).encode()
+
+
+@pytest.mark.parametrize("encode", [multipart, urlencoded])
+def test_request_parses_form_bodies(encode: Any) -> None:
+    """Replay.request feeds the parsed multipart/urlencoded body to the form constraint, not just raw text."""
+    replay = Replay()
+    replay.routes = [ROUTES[0] | {"response": {"status": 200, "body": {"query_status": "success"}}}]
+
+    def send(fields: dict[str, str]) -> int:
+        flow = tflow.tflow()
+        flow.request.method, flow.request.host, flow.request.path = "POST", "mb-api.abuse.ch", "/api/v1/"
+        flow.request.headers["content-type"], flow.request.content = encode(fields)
+        replay.request(flow)
+        assert flow.response is not None
+        return int(flow.response.status_code)
+
+    assert send(COMMENT_FORM) == 200
+    assert send(COMMENT_FORM | {"sha256_hash": "0" * 64}) == UNMATCHED_STATUS
