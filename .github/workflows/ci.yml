@@ -17,7 +17,7 @@ jobs:
     name: Lint & Format
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - uses: astral-sh/setup-uv@v10.3.3
         with:
@@ -34,7 +34,7 @@ jobs:
     name: Mypy
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - uses: astral-sh/setup-uv@v10.3.3
         with:
@@ -52,7 +52,7 @@ jobs:
         python-version: ["3.13", "3.14"]
       fail-fast: false
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           submodules: true
 
@@ -86,7 +86,7 @@ jobs:
       OLLAMA_BASE_URL: http://127.0.0.1:11434/v1
       DBOT_EVAL_MODEL: ollama:granite4:3b
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           submodules: true
 
@@ -149,7 +149,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 300
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           submodules: true
 
