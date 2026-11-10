@@ -28,12 +28,15 @@ def match(
     query: dict[str, str],
     headers: dict[str, str],
     body: str,
+    form: dict[str, str] | None = None,
 ) -> dict[str, Any] | None:
-    """First route whose method, host and path are equal and whose query/headers/body constraints all hold.
+    """First route whose method, host and path are equal and whose query/headers/form/body constraints all hold.
 
-    ``query`` and ``headers`` in a route are subsets that must be present with equal values (header names are
-    case-insensitive); ``body_contains`` is a substring of the request body.
+    ``query``, ``headers`` and ``form`` in a route are subsets that must be present with equal values (header names
+    are case-insensitive; ``form`` is the parsed multipart or urlencoded body); ``body_contains`` is a substring of
+    the request body.
     """
+    form = form or {}
     lower_headers = {k.lower(): v for k, v in headers.items()}
     for route in routes:
         if (route["method"].upper(), route["host"].lower(), route["path"]) != (method.upper(), host.lower(), path):
@@ -41,6 +44,8 @@ def match(
         if any(query.get(k) != v for k, v in route.get("query", {}).items()):
             continue
         if any(lower_headers.get(k.lower()) != v for k, v in route.get("headers", {}).items()):
+            continue
+        if any(form.get(k) != v for k, v in route.get("form", {}).items()):
             continue
         if route.get("body_contains", "") not in body:
             continue
@@ -73,6 +78,7 @@ class Replay:
             dict(req.query.items()),
             dict(req.headers.items()),
             req.get_text(strict=False) or "",
+            _form(req),
         )
         if route is None:
             line = f"{req.method} {req.pretty_url}"
@@ -87,6 +93,14 @@ class Replay:
         content_type = "text/plain" if isinstance(body, str) else "application/json"
         headers = {"Content-Type": content_type} | resp.get("headers", {})
         flow.response = http.Response.make(resp.get("status", 200), content, headers)
+
+
+def _form(req: Any) -> dict[str, str]:
+    """The request's multipart or urlencoded form fields as text (empty for any other body)."""
+    fields = dict(req.urlencoded_form.items())
+    for k, v in req.multipart_form.items():
+        fields[k.decode(errors="replace")] = v.decode(errors="replace")
+    return fields
 
 
 addons = [Replay()]

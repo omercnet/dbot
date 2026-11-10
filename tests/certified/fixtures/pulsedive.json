@@ -1,0 +1,551 @@
+{
+  "integration": "Pulsedive",
+  "routes": [
+    {
+      "name": "revoked key",
+      "source": "recorded 2026-11-09 from the Pulsedive API with an invalid key",
+      "method": "POST",
+      "host": "www.pulsedive.com",
+      "path": "/api/analyze.php",
+      "query": {
+        "key": "dbot-replay-revoked-key"
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": "Invalid API key."
+        }
+      }
+    },
+    {
+      "name": "test-module check",
+      "source": "recorded 2026-11-09 from the Pulsedive API, comments dropped (third-party usernames)",
+      "method": "GET",
+      "host": "www.pulsedive.com",
+      "path": "/api/info.php",
+      "query": {
+        "indicator": "pulsedive.com",
+        "key": "dbot-replay-good-key"
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "qid": null,
+          "iid": 53929,
+          "indicator": "pulsedive.com",
+          "type": "domain",
+          "risk": "none",
+          "risk_recommended": "none",
+          "manualrisk": 0,
+          "retired": null,
+          "stamp_added": "2017-10-04 01:20:55",
+          "stamp_updated": "2026-11-09 03:13:25",
+          "stamp_seen": "2026-11-09 03:13:25",
+          "stamp_probed": "2026-11-08 17:00:10",
+          "stamp_retired": null,
+          "recent": 0,
+          "submissions": 797,
+          "umbrella_rank": null,
+          "umbrella_domain": null,
+          "riskfactors": [
+            {
+              "rfid": 32,
+              "description": "registration recently updated",
+              "risk": "medium"
+            },
+            {
+              "rfid": 70,
+              "description": "Linked IPs return PTR records",
+              "risk": "none"
+            },
+            {
+              "rfid": 74,
+              "description": "SPF record present",
+              "risk": "none"
+            }
+          ],
+          "redirects": {
+            "from": [],
+            "to": [
+              {
+                "iid": 642010,
+                "indicator": "https://pulsedive.com/"
+              }
+            ]
+          },
+          "threats": [],
+          "feeds": [],
+          "comments": [],
+          "attributes": {
+            "port": [
+              "443",
+              "80"
+            ],
+            "protocol": [
+              "HTTP",
+              "HTTPS"
+            ],
+            "technology": [
+              "Apache",
+              "Apache HTTP Server",
+              "DMARC",
+              "Font Awesome",
+              "Google Workspace",
+              "HSTS",
+              "Let's Encrypt",
+              "Open Graph",
+              "PHP",
+              "SPF"
+            ]
+          },
+          "properties": {
+            "geo": {
+              "countrycode": "US",
+              "region": "NJ",
+              "country": "United States of America",
+              "address": "REDACTED FOR PRIVACY",
+              "zip": "REDACTED FOR PRIVACY",
+              "city": "REDACTED FOR PRIVACY",
+              "org": "Pulsedive"
+            },
+            "whois": {
+              "registrant country": "US",
+              "registrant state/province": "NJ",
+              "creation date": "2016-11-11T21:18:19Z",
+              "domain name": "pulsedive.com",
+              "registrar iana id": "895",
+              "registry domain id": "2073459391_DOMAIN_COM-VRSN",
+              "name server": [
+                "ns2.digitalocean.com",
+                "ns1.digitalocean.com",
+                "ns3.digitalocean.com"
+              ],
+              "registrant city": "REDACTED FOR PRIVACY",
+              "registrant postal code": "REDACTED FOR PRIVACY",
+              "registrant name": "REDACTED FOR PRIVACY",
+              "registrant street": "REDACTED FOR PRIVACY",
+              "registrant fax": "REDACTED FOR PRIVACY",
+              "registrant phone": "REDACTED FOR PRIVACY",
+              "++gdpr": "1",
+              "dnssec": "unsigned",
+              "++abuse": "abuse-complaints@squarespace.com",
+              "registrar whois server": "whois.squarespace.domains",
+              "registrar abuse contact phone": "+1.646-693-5324",
+              "registrar abuse contact email": "abuse-complaints@squarespace.com",
+              "++registrar": "Squarespace Domains II LLC",
+              "registrar": "Squarespace Domains II LLC",
+              "registrar url": "https://domains2.squarespace.com",
+              "registrant email": "https://domains.squarespace.com/whois-contact-form",
+              "registrant organization": "Pulsedive",
+              "++registered": "2016-11-11 21:18:19",
+              "++status": [
+                "clientTransferProhibited",
+                "clientDeleteProhibited"
+              ],
+              "domain status": [
+                "client transfer prohibited http://www.icann.org/epp#client transfer prohibited",
+                "client delete prohibited http://www.icann.org/epp#client delete prohibited"
+              ],
+              "++updated": "2026-10-28 05:49:27",
+              "++expires": "2027-11-11 21:18:19",
+              "registrar registration expiration date": "2027-11-11T21:18:19Z",
+              "updated date": "2026-10-28T05:49:27.639405Z"
+            },
+            "http": {
+              "server": "Apache",
+              "x-xss-protection": "1; mode=block",
+              "vary": "Accept-Encoding",
+              "x-content-type-options": "nosniff",
+              "connection": "Keep-Alive",
+              "strict-transport-security": "max-age=31536000; includeSubDomains",
+              "cache-control": "no-store, no-cache, must-revalidate",
+              "content-encoding": "gzip",
+              "keep-alive": "timeout=5, max=100",
+              "++code": "200",
+              "transfer-encoding": "chunked",
+              "++status": "OK",
+              "content-type": "text/html; charset=utf-8",
+              "++content-type": "text/html",
+              "content-security-policy": "default-src 'self' pulsedive.com *.pulsedive.com; img-src *; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; frame-ancestors 'none'",
+              "++base": "https://pulsedive.com/",
+              "++target": "http://pulsedive.com/",
+              "++redirect": "https://pulsedive.com/",
+              "date": "Sat, 07 Nov 2026 17:00:03 GMT",
+              "set-cookie": "PHPSESSID=2htus0na7cqsa8e1p45a51sri4; expires=Wed, 06 Jan 2027 17:00:03 GMT; Max-Age=5184000; path=/; secure; HttpOnly",
+              "++sha256": "e619df3a9af3ab79b6c3a0c2745465f7ed113cb98bde6ba2d8a9987409c86899"
+            },
+            "ssl": {
+              "subject": "/CN=pulsedive.com",
+              "domain": [
+                "pulsedive.com",
+                "www.pulsedive.com"
+              ],
+              "version": "v3",
+              "org": "YR1",
+              "issuer": "/C=US/O=Let's Encrypt/CN=YR1",
+              "validated": "domain",
+              "++jarm": "2ad2ad16d2ad2ad00042d42d000000c33a20aec889d430cbd148294f584a77",
+              "valid": "2026-10-25 06:04:33",
+              "++sha256": "0f283b58110b6b4d167d7ce362879080aead9e974c22a7224ee92b3fe013159e",
+              "fingerprint": "77587c1a2123ec465c32a85d33215c2f2ad8830f851ec3c454058601040a99df",
+              "expires": "2027-01-23 06:04:32"
+            },
+            "dns": {
+              "mname": "ns1.digitalocean.com",
+              "ns": [
+                "ns2.digitalocean.com",
+                "ns3.digitalocean.com",
+                "ns1.digitalocean.com"
+              ],
+              "mx": [
+                "alt3.aspmx.l.google.com",
+                "alt4.aspmx.l.google.com",
+                "alt1.aspmx.l.google.com",
+                "aspmx.l.google.com",
+                "alt2.aspmx.l.google.com"
+              ],
+              "a": "45.55.106.210",
+              "txt": [
+                "v=spf1 include:_spf.google.com ~all",
+                "google-site-verification=GXa0HAqM2mVwxSt2_w32TvH4mSmVD18G25ofOTuucWk"
+              ],
+              "rname": "hostmaster@pulsedive.com",
+              "soa": "ns1.digitalocean.com. hostmaster.pulsedive.com. 0 10800 3600 604800 1800",
+              "++dmarc": "v=DMARC1; p=quarantine; rua=mailto:8o5xt7tmt6@rua.powerdmarc.com; ruf=mailto:8o5xt7tmt6@ruf.powerdmarc.com; fo=1;"
+            },
+            "meta": {
+              "viewport": "width=device-width, initial-scale=1",
+              "twitter:card": "summary_large_image",
+              "twitter:site": "@pulsedive",
+              "charset": "utf-8",
+              "++title": "Threat Intelligence - Pulsedive",
+              "keywords": "threat intelligence,feed,ioc",
+              "twitter:title": "Threat Intelligence - Pulsedive",
+              "assets": "https://pulsedive.com",
+              "og:title": "Threat Intelligence - Pulsedive",
+              "og:description": "Pulsedive is a free threat intelligence platform. Search, scan, and enrich IPs, URLs, domains and other IOCs from OSINT feeds or submit your own.",
+              "description": "Pulsedive is a free threat intelligence platform. Search, scan, and enrich IPs, URLs, domains and other IOCs from OSINT feeds or submit your own.",
+              "twitter:description": "Pulsedive is a free threat intelligence platform. Search, scan, and enrich IPs, URLs, domains and other IOCs from OSINT feeds or submit your own.",
+              "og:url": "https://pulsedive.com/",
+              "author": "Pulsedive",
+              "twitter:creator": "@pulsedive",
+              "twitter:image": "https://pulsedive.com/img/opengraph/home.jpg",
+              "og:image": "https://pulsedive.com/img/opengraph/home.jpg",
+              "version": "6.3.18"
+            },
+            "dom": {
+              "screenshot": "https://sandbox.pulsedive.com/screenshots/b61058c5330af359919500cbf0cb9fb5.jpeg",
+              "sha256": "a8b73bc2351b837962780c584d4e93baefe4e00ce6af7afbe3232589d2de27ed"
+            },
+            "cookies": {
+              "phpsessid": "2htus0na7cqsa8e1p45a51sri4"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "ip 8.8.8.8",
+      "source": "recorded 2026-11-09 from the Pulsedive API, comments dropped (third-party usernames)",
+      "method": "GET",
+      "host": "www.pulsedive.com",
+      "path": "/api/info.php",
+      "query": {
+        "indicator": "8.8.8.8",
+        "key": "dbot-replay-good-key"
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "qid": null,
+          "iid": 111601,
+          "indicator": "8.8.8.8",
+          "type": "ip",
+          "risk": "none",
+          "risk_recommended": "none",
+          "manualrisk": 0,
+          "retired": null,
+          "stamp_added": "2017-10-18 04:03:08",
+          "stamp_updated": "2026-11-09 10:08:38",
+          "stamp_seen": "2026-11-09 10:08:38",
+          "stamp_probed": "2026-11-09 01:18:39",
+          "stamp_retired": null,
+          "recent": 0,
+          "submissions": 105,
+          "umbrella_rank": 827,
+          "umbrella_domain": "dns.google",
+          "riskfactors": [
+            {
+              "rfid": 71,
+              "description": "common resource or infrastructure",
+              "risk": "none"
+            },
+            {
+              "rfid": 50,
+              "description": "hosted on common ISP",
+              "risk": "none"
+            },
+            {
+              "rfid": 62,
+              "description": "linked to top 100k domain",
+              "risk": "none"
+            },
+            {
+              "rfid": 61,
+              "description": "linked to top 10k domain",
+              "risk": "none"
+            },
+            {
+              "rfid": 63,
+              "description": "linked to top 1k domain",
+              "risk": "none"
+            },
+            {
+              "rfid": 1,
+              "description": "returns PTR record",
+              "risk": "none"
+            }
+          ],
+          "redirects": {
+            "from": [],
+            "to": [
+              {
+                "iid": 275897,
+                "indicator": "http://www.google.com/"
+              },
+              {
+                "iid": 291419,
+                "indicator": "https://www.google.com/"
+              },
+              {
+                "iid": 6490361,
+                "indicator": "https://dns.google/"
+              }
+            ]
+          },
+          "threats": [
+            {
+              "tid": 431,
+              "name": "CryptoMining",
+              "category": "general",
+              "risk": "low",
+              "stamp_linked": "2020-10-15 13:23:37"
+            },
+            {
+              "tid": 108,
+              "name": "JS Crypto Miner",
+              "category": "general",
+              "risk": "unknown",
+              "stamp_linked": "2018-07-16 07:16:42"
+            },
+            {
+              "tid": 109,
+              "name": "Monero",
+              "category": "abuse",
+              "risk": "unknown",
+              "stamp_linked": "2018-05-02 06:48:24"
+            },
+            {
+              "tid": 67,
+              "name": "Phishing",
+              "category": "general",
+              "risk": "high",
+              "stamp_linked": "2018-02-20 03:51:59"
+            },
+            {
+              "tid": 39,
+              "name": "SSH Brute Force",
+              "category": "general",
+              "risk": "low",
+              "stamp_linked": "2018-01-21 17:17:46"
+            }
+          ],
+          "feeds": [
+            {
+              "fid": 69,
+              "name": "Brute Force Hosts",
+              "category": "botnet",
+              "organization": "James Brine",
+              "pricing": null,
+              "stamp_linked": "2023-10-19 10:03:11"
+            },
+            {
+              "fid": 65,
+              "name": "Zerodot1's Mining IPs Feed",
+              "category": "abuse",
+              "organization": "ZeroDot1",
+              "pricing": null,
+              "stamp_linked": "2020-10-15 13:23:37"
+            }
+          ],
+          "comments": [],
+          "attributes": {
+            "hosttype": [
+              "Name Server"
+            ],
+            "port": [
+              "443",
+              "53",
+              "80"
+            ],
+            "protocol": [
+              "DNS",
+              "DNS-over-TLS",
+              "FILE",
+              "FTP",
+              "HTTP",
+              "HTTPS",
+              "RTSP",
+              "SSH",
+              "Telnet"
+            ],
+            "technology": [
+              "Apache",
+              "Google Web Server",
+              "HSTS",
+              "HTTP/3"
+            ]
+          },
+          "properties": {
+            "whois": {
+              "country": "US",
+              "nettype": "Direct Allocation",
+              "orgabusename": "Abuse",
+              "stateprov": "CA",
+              "++abuse": "network-abuse@google.com",
+              "++email": "arin-contact@google.com",
+              "++phone": "+1-650-253-0000",
+              "address": "1600 Amphitheatre Parkway",
+              "city": "Mountain View",
+              "orgabuseemail": "network-abuse@google.com",
+              "orgabusehandle": "ABUSE5250-ARIN",
+              "orgabusephone": "+1-650-253-0000",
+              "orgid": "GOGL",
+              "orgtechemail": "arin-contact@google.com",
+              "orgtechhandle": "ZG39-ARIN",
+              "orgtechphone": "+1-650-253-0000",
+              "postalcode": "94043",
+              "regdate": [
+                "2000-03-30",
+                "2023-12-28"
+              ],
+              "++registrant": "Google LLC",
+              "organization": "Google LLC (GOGL)",
+              "orgname": "Google LLC",
+              "orgtechname": "Google LLC",
+              "cidr": "8.8.8.0/24",
+              "netrange": "8.8.8.0 - 8.8.8.255",
+              "++registered": [
+                "2000-03-30 00:00:00",
+                "2023-12-28 00:00:00"
+              ],
+              "parent": "NET8 (NET-8-0-0-0-0)",
+              "orgtechref": "https://rdap.arin.net/registry/entity/ZG39-ARIN",
+              "ref": [
+                "https://rdap.arin.net/registry/entity/GOGL",
+                "https://rdap.arin.net/registry/ip/8.8.8.0"
+              ],
+              "orgabuseref": "https://rdap.arin.net/registry/entity/ABUSE5250-ARIN",
+              "++updated": [
+                "2019-10-31 00:00:00",
+                "2023-12-28 00:00:00"
+              ],
+              "updated": [
+                "2019-10-31",
+                "2023-12-28"
+              ],
+              "nethandle": "NET-8-8-8-0-2",
+              "netname": "GOGL",
+              "++cidr": "8.8.8.0/24"
+            },
+            "geo": {
+              "city": "Mountain View",
+              "country": "United States",
+              "countrycode": "US",
+              "zip": "94043",
+              "region": "CA",
+              "asn": "AS15169",
+              "org": [
+                "Google LLC",
+                "Google LLC (GOGL)"
+              ],
+              "address": "1600 Amphitheatre Parkway",
+              "lat": "37.751",
+              "long": "-97.822"
+            },
+            "http": {
+              "content-type": "text/html; charset=UTF-8",
+              "x-frame-options": "SAMEORIGIN",
+              "x-content-type-options": "nosniff",
+              "content-encoding": "gzip",
+              "strict-transport-security": "max-age=31536000; includeSubDomains; preload",
+              "content-length": "723",
+              "cache-control": "public, max-age=300",
+              "age": "243",
+              "++code": "200",
+              "server": "scaffolding on HTTPServer2",
+              "++content-type": "text/html",
+              "alt-svc": "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000",
+              "x-xss-protection": "0",
+              "++target": "https://8.8.8.8/",
+              "++redirect": "https://dns.google/",
+              "content-security-policy-report-only": "script-src 'none'; form-action 'none'; frame-src 'none'; report-uri https://csp.withgoogle.com/csp/scaffolding/ntdsgswbsc:55:0",
+              "cross-origin-opener-policy-report-only": "same-origin; report-to=ntdsgswbsc:55:0",
+              "report-to": "{\"group\":\"ntdsgswbsc:55:0\",\"max_age\":2592000,\"endpoints\":[{\"url\":\"https://csp.withgoogle.com/csp/report-to/scaffolding/ntdsgswbsc:55:0\"}],}",
+              "++base": "https://dns.google/",
+              "date": "Sat, 31 Oct 2026 23:59:35 GMT",
+              "expires": "Sun, 01 Nov 2026 00:04:35 GMT",
+              "++sha256": "7117089d2ae5eae615e2f3b8addaaec69f978e9ec5d712eb929a0cdcb03d4bac",
+              "content-security-policy": "object-src 'none';base-uri 'self';script-src 'nonce-9_SvgmN5o1dHa3R_aljV8w' 'strict-dynamic' 'report-sample' 'unsafe-eval' 'unsafe-inline' https: http:;report-uri https://csp.withgoogle.com/csp/honest_dns/1_0;frame-ancestors 'none'"
+            },
+            "meta": {
+              "viewport": "width=device-width, initial-scale=1",
+              "charset": "UTF-8",
+              "++title": "Google Public DNS"
+            },
+            "cookies": {
+              "1p_jar": "2018-10-28-19",
+              "nid": "144=rUAPw0m2ltCEcrJ3sLN4gzKKLTbcZduM2mNB_oO4XF6sz6i2qHsmuC8tSW7cONYqSGXsX9YuULcm31w_aye0Zn0vaLgKHczbHiHVMSUxn_U99vNfkpvoB7hZfaUrmm9uSZkFx6wO3n6YyX4m-SN3qoxdhuCaTuoIwsY5cuumgSk"
+            },
+            "ssl": {
+              "version": "v3",
+              "domain": [
+                "dns.google",
+                "*.dns.google.com",
+                "8888.google",
+                "dns.google.com",
+                "dns64.dns.google"
+              ],
+              "subject": "/CN=dns.google",
+              "ip": [
+                "8.8.8.8",
+                "8.8.4.4",
+                "2001:4860:4860::8888",
+                "2001:4860:4860::8844",
+                "2001:4860:4860::6464",
+                "2001:4860:4860::64",
+                "8.8.8.53"
+              ],
+              "issuer": "/C=US/O=Google Trust Services/CN=WE2",
+              "org": "WE2",
+              "++untrusted": "1",
+              "validated": "domain",
+              "++jarm": "29d3fd00029d29d00042d43d00041d8f924f5255cbc229bc55efa16391dad6",
+              "valid": "2026-10-07 19:09:57",
+              "expires": "2026-12-30 19:09:56",
+              "++sha256": "f0702d22b8397668bd4525135eaf409b6ad43c4489e99b0a2431931373592bc5",
+              "fingerprint": "a716431b374c7f344247380f41fd572e012e665d451ddad9626ed0743baf6c3d"
+            },
+            "dns": {
+              "ptr": "dns.google"
+            },
+            "dom": {
+              "sha256": "17f836c1cd752f5302d87c96aca25022ce838dbcbbbc3ca17fc1ad320268a8cf",
+              "screenshot": "https://sandbox.pulsedive.com/screenshots/a2b7429c2f7a92fcad202dd19b5b38ff.jpeg"
+            }
+          }
+        }
+      }
+    }
+  ]
+}

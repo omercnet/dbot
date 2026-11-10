@@ -81,7 +81,7 @@ async def test_revoked_key_is_integration_error(gateway: Gateway, spec: Spec) ->
 def test_shipped_policy(catalog: Catalog, spec: Spec) -> None:
     config = load_config(EXAMPLE_CONFIG)
     inst = config.instance(spec.instance)
-    assert risk("test-module", config.policy, None, inst) == "read"
+    assert risk("test-module", config.policy, None, inst) == spec.test_module_risk
     for command in spec.reads:
         _, command_def = catalog.resolve(f"{spec.integration}.{command}")
         assert risk(command, config.policy, command_def, inst) == "read", command
