@@ -92,10 +92,11 @@ approved action that has a secret argument; it is refused, and the action must b
 
 1. If it matches the instance's `policy.read`, it is `read`.
 2. Otherwise, if it matches the instance's `policy.destructive`, it is `destructive`.
-3. Otherwise, if the integration YAML marks it `execution: true`, it is `destructive`.
-4. Otherwise, if it matches the global `destructive`, it is `destructive`.
-5. Otherwise, if it matches the global `read`, it is `read`.
-6. Otherwise, it is `destructive`.
+3. Otherwise, if dbot's built-in list for the instance's integration names it, it is `destructive`.
+4. Otherwise, if the integration YAML marks it `execution: true`, it is `destructive`.
+5. Otherwise, if it matches the global `destructive`, it is `destructive`.
+6. Otherwise, if it matches the global `read`, it is `read`.
+7. Otherwise, it is `destructive`.
 
 Globs use `fnmatch` and match the command name (without the integration prefix) case-insensitively. Destructive
 commands always need a single-use approval. Destructive wins when a command matches both global lists, so
@@ -108,6 +109,10 @@ override can lift such a command. The default `read` list covers the generic rep
 
 The example config marks `abuseipdb-check-cidr-block` as read on the `abuseipdb` instance, because `*block*` would
 otherwise catch it, and marks `url` destructive on the `urlscan` instance, where it submits a scan.
+
+The built-in list (`INTEGRATION_DESTRUCTIVE` in `dbot/control/config.py`) covers commands that look like reads but
+write to the vendor. Today it has one entry: MalwareBazaar's `test-module`, which posts a public comment on a sample
+when an Auth-Key is set. Global policy cannot lift these; an instance's `policy.read` can, if you accept the write.
 
 ## Roles
 

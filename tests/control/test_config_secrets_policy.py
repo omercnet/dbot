@@ -327,6 +327,24 @@ def test_instance_override_loads_from_yaml_and_is_scoped(tmp_path: Path) -> None
     assert risk("url", cfg.policy, None, vt) == "read"
 
 
+def test_builtin_integration_destructive_applies_without_config() -> None:
+    """MalwareBazaar's test-module posts a public comment, so it is gated even though the global read list has it."""
+    policy = PolicyConfig()  # defaults: test-module is in the global read list
+    mb = InstanceConfig(name="mb", integration="MalwareBazaar")
+    other = InstanceConfig(name="otx", integration="AlienVault OTX v2")
+    assert risk("test-module", policy, None, mb) == "destructive"
+    assert risk("TEST-MODULE", policy, None, mb) == "destructive"
+    assert risk("test-module", PolicyConfig(destructive=[], read=["*"]), None, mb) == "destructive"  # global can't lift
+    assert risk("test-module", policy, None, other) == "read"
+    assert risk("file", policy, None, mb) == "read"  # only the listed commands are affected
+    assert risk("test-module", policy) == "read"  # no instance, no integration to look up
+
+
+def test_builtin_integration_destructive_lifted_only_by_instance_read() -> None:
+    lifted = InstanceConfig(name="mb", integration="MalwareBazaar", policy=PolicyOverride(read=["test-module"]))
+    assert risk("test-module", PolicyConfig(), None, lifted) == "read"
+
+
 def test_instance_policy_rejects_unknown_keys(tmp_path: Path) -> None:
     with pytest.raises(ConfigError, match="dangerous"):
         load_config(_write(tmp_path, "instances:\n  - {name: a, integration: X, policy: {dangerous: [url]}}\n"))
