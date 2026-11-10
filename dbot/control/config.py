@@ -73,6 +73,12 @@ DEFAULT_READ = [
     "*-reputation*",
     "*-enrich*",
 ]
+# Built-in, per integration (catalog name): commands the global read list would let through but that write to the
+# vendor. They apply to every instance of that integration; only the instance's own `policy.read` can lift them.
+INTEGRATION_DESTRUCTIVE: dict[str, list[str]] = {
+    # With an Auth-Key set, test-module posts a public comment on a sample (MalwareBazaar.py test_module).
+    "MalwareBazaar": ["test-module"],
+}
 _URL_SCHEMES = frozenset({"http", "https", "ws", "wss", "ftp", "ftps", "ldap", "ldaps", "tcp", "ssl", "tls"})
 
 

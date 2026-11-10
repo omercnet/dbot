@@ -55,7 +55,6 @@ instances:
       credentials: {password: env://ABUSECH_AUTH_KEY}
       integrationReliability: C - Fairly reliable
     allow_hosts: [mb-api.abuse.ch]
-    policy: {destructive: [test-module]}  # with an Auth-Key it posts a public comment on a sample
 
 # policy: omitted, so the defaults apply (see docs/configuration.md). Anything no glob matches is destructive,
 # so TI submit/report/scan commands (abuseipdb-report-ip, urlscan-submit, file-scan, vt-comments-add) need approval.

@@ -130,7 +130,7 @@ SPECS = [
         error_args={"file": "094fd325049b8a9cf6d3e5ef2a6d4cc6a567d7d49c35f8bb8dd9e3c6acf3d78d"},
         error_message="unknown_auth_key",  # BaseClient's 403 error carries the vendor body
         destructive=["malwarebazaar-comment-add", "malwarebazaar-download-sample"],
-        # With an Auth-Key set, test-module posts a public comment on a sample, so the shipped policy gates it.
+        # With an Auth-Key set, test-module posts a public comment on a sample; dbot gates it by default.
         test_module_risk="destructive",
     ),
 ]
